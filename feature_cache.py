@@ -12,14 +12,14 @@ class FeatureCache:
         return os.path.join(self.cache_dir, f"{image_id}.pt")
 
     def _make_key(self, key, **kwargs):
-        # 用于dict里的key，保证唯一性但避免特殊字符
+        # Used as the key in dict, ensuring uniqueness but avoiding special characters
         if key in {"sub", "obj", "union"}:
             bbox = kwargs["bbox"]
             bbox_str = "_".join(map(str, map(int, bbox)))
             return f"{key}_{bbox_str}"
         elif "text" in key:
             text = kwargs["text"]
-            # 用哈希防止特殊字符
+            # Protecting against special characters with hashing
             text_hash = hashlib.md5(text.encode("utf-8")).hexdigest()
             return f"{key}_{text_hash}"
         else:
@@ -36,7 +36,7 @@ class FeatureCache:
         return self._cache[image_id].get(dict_key, None)
 
     def save(self, feat, image_id, key, **kwargs):
-        # 先读出dict（防止覆盖），再写入
+        # Read out dict first (to prevent overwriting), then write
         if image_id not in self._cache:
             path = self._get_file_path(image_id)
             if os.path.exists(path):
@@ -45,5 +45,6 @@ class FeatureCache:
                 self._cache[image_id] = {}
         dict_key = self._make_key(key, **kwargs)
         self._cache[image_id][dict_key] = feat
-        # 每次save都整体写回
+        # Each save is written back as a whole
+
         torch.save(self._cache[image_id], self._get_file_path(image_id))
