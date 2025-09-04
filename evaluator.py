@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 def compute_iou(box1, box2):
-    """计算两个bbox的IoU，box: [x1, y1, x2, y2]"""
+    """Calculate the IoU of two bboxes，box: [x1, y1, x2, y2]"""
     x1 = max(box1[0], box2[0])
     y1 = max(box1[1], box2[1])
     x2 = min(box1[2], box2[2])
@@ -17,7 +17,7 @@ def compute_iou(box1, box2):
     return inter_area / union_area
 
 def match_triplet(pred, gt, iou_thr=0.5):
-    """判断单个预测三元组是否与GT三元组匹配"""
+    """Determine whether a single predicted triple matches the GT triple"""
     return (
         pred['sub_cls'] == gt['sub_cls'] and
         pred['obj_cls'] == gt['obj_cls'] and
@@ -28,9 +28,9 @@ def evaluate_sgg_recall_by_image(
         model, dataloader, recall_ks, device="cuda", iou_thr=0.5
 ):
     """
-    以图像为单位评估Recall@k（scene graph/PredCLS标准）
-    - model: 必须实现 model.predict_triplets(batch)
-    - dataloader: 每次batch返回一个dict, 每个key是list, 每张图片包含GT三元组
+    Evaluate Recall@k on an image-by-image basis (scene graph/PredCLS criterion)
+    - model: must implement model.predict_triplets(batch)
+    - dataloader: Each batch returns a dict, each key is a list, and each image contains a GT triplet
     """
     model.eval()
     total_gt = 0
@@ -59,7 +59,7 @@ def evaluate_sgg_recall_by_image(
         print(f"[SceneGraph][PredCLS] Recall@{k}: {recall:.4f}")
 
 if __name__ == "__main__":
-    # ===== 直接在这里配置参数 =====
+    # ===== Configure parameters directly here =====
     ann_file = "dataset/vg/annotations/instances_vg_test_new_test.json"
     img_dir_root = "dataset/vg/images"
     object_json = "dataset/vg/annotations/objects.json"
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     recall_ks = [1, 5, 10, 15, 20, 50, 100]
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # iou_thr = 0.5
-    # ========== 结构参数需要和训练时完全一致 ==========
+    # ========== The structural parameters need to be exactly the same as during training ==========
     fusion_type = "multihead_attention"
     fusion_heads = 4
     fusion_depth = 2
@@ -108,4 +108,5 @@ if __name__ == "__main__":
     model.load_state_dict(torch.load(ckpt, map_location=device))
 
     evaluate_sgg_recall_by_image(model, dataloader, recall_ks, device=device)
+
     # , iou_thr=iou_thr
