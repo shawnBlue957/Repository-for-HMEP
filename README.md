@@ -1,15 +1,19 @@
-# HMEP Repository
+# Hierarchical embedding-based visual relationship prediction method with multimodal fusion（HMEP Repository）
 
 ## Description
-This repository contains code and resources for the HMEP project. It is designed for data processing, analysis, and modeling using Python.
+This repository contains code and resources for the Hierarchical Multimodal Embedding for Prediction (HMEP) project. It is designed for visual relationship prediction using multimodal fusion and hierarchical embedding techniques.
 
 ## Dataset Information
-- **Primary Dataset**: Please refer to the [Visual Genome](https://visualgenome.org/) dataset.The original dataset can be downloaded via this link https://homes.cs.washington.edu/~ranjay/visualgenome/api.html
+- **Primary Dataset**: The Visual Genome dataset (Version 1.4) is used for model training and evaluation.
+  - **DOI**: 10.5281/zenodo.4004776
+  - **URL**: https://visualgenome.org/
+  - **Download Link**: https://homes.cs.washington.edu/~ranjay/visualgenome/api.html
 - **Other Data Sources**: See respective sections or code comments for details.
 
 ## Code Information
 - All scripts are written in Python.
-- Main functionalities include data preprocessing, feature extraction, and model training.
+- Main functionalities include data preprocessing, feature extraction, multimodal fusion, and model training.
+- The code implements the HMEP framework with dynamic weighting and consistency regularization.
 
 ## Usage Instructions
 1. **Clone this repository**:
@@ -22,16 +26,22 @@ This repository contains code and resources for the HMEP project. It is designed
     pip install -r requirements.txt
     ```
 3. **Prepare the dataset**:
-    - Download the Visual Genome dataset from the official website or Zenodo.
+    - Download the Visual Genome dataset from the official website.
     - Place the downloaded files in the `data/` directory.
+    - Run preprocessing scripts to extract and format data:
+      ```bash
+      python preprocess.py
+      ```
 
-4. **Run preprocessing**:
+4. **Train the model**:
     ```bash
-    python preprocess.py
+    python train.py
     ```
 
-5. **Train or analyze models**:
-    - Depending on your workflow, use `train.py` or other provided scripts.
+5. **Evaluate the model**:
+    ```bash
+    python evaluate.py
+    ```
 
 ## Requirements
 - Python >= 3.7
@@ -39,29 +49,50 @@ This repository contains code and resources for the HMEP project. It is designed
   - numpy
   - pandas
   - scikit-learn
-  - torch (if using deep learning modules)
+  - torch
+  - torchvision
+  - transformers
   - tqdm
-  - (and others as specified)
+  - Pillow
 
-## Methods
-- **Data Preprocessing**: Loading, cleaning, and transforming raw datasets into structured formats.
-    - If no preprocessing is required, this will be stated in relevant scripts.
-- **Feature Extraction**: Extracting relevant features from images and text for modeling.
-- **Modeling**: Training machine learning or deep learning models for data analysis or prediction.
-- **Evaluation**: Assessing model performance using standard metrics.
+## Methodology
+- **Data Preprocessing**: 
+  - Object detection using Faster R-CNN
+  - Bounding box extraction and union box calculation
+  - Feature extraction using CLIP image and text encoders
+  - Normalization and formatting of spatial coordinates
+- **Feature Extraction**: 
+  - Visual features from image regions
+  - Text features from category labels
+  - Spatial features from bounding box coordinates
+- **Multimodal Fusion**: 
+  - Multi-head self-attention mechanism for deep feature fusion
+  - Dynamic weighting of modality contributions
+- **Modeling**: 
+  - Hierarchical embedding architecture
+  - Dynamic relationship prediction operator
+  - Consistency and reversibility regularization
+- **Evaluation**: 
+  - Recall@K metrics for predicate classification
+  - Ablation studies for component analysis
 
-## Citation
+## Citations
 If you use this repository or the associated datasets in your research, please cite:
-```
 @misc{visualgenome,
-  title = {Visual Genome Dataset},
-  author = {Krishna, Ranjay and et al.},
-  year = {2017},
-  publisher = {Zenodo},
-  doi = {10.5281/zenodo.4004776},
-  url = {https://visualgenome.org/}
+title = {Visual Genome Dataset},
+author = {Krishna, Ranjay and et al.},
+year = {2017},
+publisher = {Zenodo},
+doi = {10.5281/zenodo.4004776},
+url = {https://visualgenome.org/}
 }
-```
+
+@article{hmep2024,
+title = {Hierarchical Embedding-Based Visual Relationship Prediction Method with Multimodal Fusion},
+author = {Sun, Yunhao and Chen, Xiaoao and Chen, Heng and Qi, Ruihua},
+journal = {Preprint},
+year = {2024}
+}
 
 ## License
 This project is licensed under the MIT License. See the `LICENSE` file for details.
@@ -70,8 +101,8 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 Contributions are welcome! Please submit pull requests or open issues for suggestions or bug reports. Follow standard Python coding conventions and document your code clearly.
 
 ## Materials and Methods
-- **Materials**: Visual Genome dataset, Python scripts, supporting libraries.
-- **Methods**: Detailed in the [Methods](#methods) section above.
+- **Materials**: Visual Genome dataset (DOI: 10.5281/zenodo.4004776), Python scripts, CLIP model weights, Faster R-CNN detector
+- **Methods**: Detailed in the [Methodology](#methodology) section above
 
 ---
 
