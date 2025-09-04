@@ -4,7 +4,7 @@
 This repository contains code and resources for the HMEP project. It is designed for data processing, analysis, and modeling using Python.
 
 ## Dataset Information
-- **Primary Dataset**: Please refer to the [Visual Genome](https://visualgenome.org/) dataset.
+- **Primary Dataset**: Please refer to the [Visual Genome](https://visualgenome.org/) dataset.The original dataset can be downloaded via this link https://homes.cs.washington.edu/~ranjay/visualgenome/api.html
 - **Other Data Sources**: See respective sections or code comments for details.
 
 ## Code Information
