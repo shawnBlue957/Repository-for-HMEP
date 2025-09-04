@@ -12,8 +12,8 @@ from tqdm import tqdm
 
 def invertibility_loss(features, pair_sample_num=None):
     """
-    features: List[dict], 每个dict包含 'f_sub', 'f_obj', 'f_union', 'alpha', 'beta', 'f_pred_raw'
-    pair_sample_num: 若为None则取全对，否则随机采样pair_sample_num对
+    features: List[dict], each dict contains 'f_sub', 'f_obj', 'f_union', 'alpha', 'beta', 'f_pred_raw'
+    pair_sample_num: If None, take all pairs, otherwise randomly sample pair_sample_num pairs
     """
     total_loss = 0.0
     total_count = 0
@@ -27,8 +27,8 @@ def invertibility_loss(features, pair_sample_num=None):
 
         N = f_sub.shape[0]
         if N < 2:
-            continue  # 跳过无法构成pair的样本
-        # 默认全对，或采样pair_sample_num对
+            continue  # Skip samples that cannot form a pair
+        #Default is all pairs, or sample pair_sample_num pairs
         pairs = []
         if pair_sample_num is not None and pair_sample_num < N * (N - 1) // 2:
             idx = torch.randperm(N * (N - 1) // 2)[:pair_sample_num]
@@ -59,7 +59,7 @@ def evaluate(model, dataloader, device, writer=None, epoch=None, phase="val", us
     correct, loss_sum, num_samples = 0, 0.0, 0
     criterion = CrossEntropyLoss()
     all_preds, all_labels = [], []
-    inv_loss_sum = 0.0  # 可逆性损失累计
+    inv_loss_sum = 0.0  
     with torch.no_grad():
         for batch in tqdm(dataloader, desc=f"Evaluating ({phase})", leave=False):
             if use_invertibility_loss:
@@ -123,15 +123,15 @@ def main():
     parser.add_argument('--fused_feature_dim', type=int, default=256)
     parser.add_argument('--fusion_type', type=str, default='multihead_attention',
                         choices=['cat', 'sum', 'gate', 'attention', 'multihead_attention'],
-                        help='特征融合方式')
-    parser.add_argument('--fusion_heads', type=int, default=4, help='多头注意力头数')
-    parser.add_argument('--fusion_depth', type=int, default=2, help='融合深度（多层MLP）')
-    parser.add_argument('--use_visual', type=int, default=1, help='是否使用视觉特征')
-    parser.add_argument('--use_text', type=int, default=1, help='是否使用文本特征')
-    parser.add_argument('--use_coord', type=int, default=1, help='是否使用坐标特征')
+                        help='Feature fusion method')
+    parser.add_argument('--fusion_heads', type=int, default=4, help='Number of multi-head attention heads')
+    parser.add_argument('--fusion_depth', type=int, default=2, help='Fusion Depth (Multi-layer MLP)')
+    parser.add_argument('--use_visual', type=int, default=1, help='Whether to use visual features')
+    parser.add_argument('--use_text', type=int, default=1, help='Whether to use text features')
+    parser.add_argument('--use_coord', type=int, default=1, help='Whether to use coordinate features')
     # 新增：可逆性损失相关参数
-    parser.add_argument('--use_invertibility_loss', type=int, default=1, help="是否启用可逆性损失函数")
-    parser.add_argument('--lambda_inv', type=float, default=1.0, help="可逆性损失函数权重")
+    parser.add_argument('--use_invertibility_loss', type=int, default=1, help="Whether to enable reversible loss function")
+    parser.add_argument('--lambda_inv', type=float, default=1.0, help="Reversibility loss function weight")
     args = parser.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -142,7 +142,7 @@ def main():
     lambda_inv = args.lambda_inv
 
     model_kwargs = dict(
-        num_predicates=None,  # 训练集加载后填写
+        num_predicates=None,  
         clip_model_type=args.clip_model_type,
         visual_feature_dim=args.visual_feature_dim,
         text_feature_dim=args.text_feature_dim,
@@ -337,3 +337,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
