@@ -14,7 +14,8 @@ class FusionStrategies:
 
 class FeatureFusion(nn.Module):
     """
-    多模态特征融合模块，支持cat/sum/gate/attention/multihead_attention，含残差和深融合
+    Multimodal feature fusion module, supporting cat/sum/gate/attention/multihead_attention, 
+    including residual and deep fusion
     """
 
     def __init__(
@@ -24,8 +25,8 @@ class FeatureFusion(nn.Module):
             fusion_type='cat',
             hidden_dim=512,
             dropout_p=0.3,
-            n_heads=4,  # 多头数量
-            deep_layers=2  # 深度融合层数
+            n_heads=4,  
+            deep_layers=2  
     ):
         super().__init__()
         self.fusion_type = fusion_type
@@ -76,14 +77,14 @@ class FeatureFusion(nn.Module):
                 nn.Linear(hidden_dim, out_dim)
             )
         elif fusion_type == FusionStrategies.MH_ATTENTION:
-            # 多头注意力
+            # Multi-headed attention
             self.attn = nn.MultiheadAttention(
                 embed_dim=hidden_dim,
                 num_heads=n_heads,
                 batch_first=True,
                 dropout=dropout_p
             )
-            # 深层残差融合块
+            # Deep Residual Fusion Block
             deep_layers = []
             for _ in range(self.deep_layers):
                 deep_layers.append(nn.Linear(hidden_dim, hidden_dim))
@@ -127,7 +128,7 @@ class FeatureFusion(nn.Module):
             out, _ = self.attn(x, x, x, need_weights=False)
             fused = x + out
             fused = fused.mean(dim=1)  # (N, H)
-            fused = self.deep_mlp(fused) + fused  # 残差
+            fused = self.deep_mlp(fused) + fused  
             fused = self.final_proj(fused)
         else:
             raise NotImplementedError
@@ -192,7 +193,7 @@ class VGRelationModel(nn.Module):
         )
         self.gate_activation = nn.Sigmoid()
 
-        # relation_mlp的输入维度要与fused_feature_dim一致
+        # The input dimension of relation_mlp should be consistent with fused_feature_dim
         relation_layers = [
             nn.Linear(fused_feature_dim, 128),
             nn.ReLU(),
@@ -238,7 +239,7 @@ class VGRelationModel(nn.Module):
 
     def forward(self, batch, return_features=False):
         all_logits = []
-        all_features = []  # 新增
+        all_features = []  
         device = next(self.parameters()).device
         batch_size = len(batch['image_id'])
         for i in range(batch_size):
@@ -269,7 +270,7 @@ class VGRelationModel(nn.Module):
             obj_feat, obj_proj_feats = self.obj_fusion(obj_inputs)
             union_feat, union_proj_feats = self.union_fusion(union_inputs)
 
-            # 残差连接（仅单模态时才加）
+            # Residual connection (only added when single mode)
             if len(sub_proj_feats) == 1:
                 sub_feat = sub_feat + sub_proj_feats[0]
             if len(obj_proj_feats) == 1:
@@ -294,9 +295,9 @@ class VGRelationModel(nn.Module):
             all_logits.append(logits)
 
             if return_features:
-                # 只保留当前样本所有特征
+                # Only keep all features of the current sample
                 # f_sub, f_obj, f_union, alpha, beta, f_pred_raw
-                # 其中 f_pred_raw = relation_feat_intermediate
+                # f_pred_raw = relation_feat_intermediate
                 # shape: (N, D)
                 all_features.append({
                     'f_sub': sub_feat.detach(),
@@ -325,7 +326,7 @@ class VGRelationModel(nn.Module):
                 triplets = []
                 N = logits.shape[0]
                 gt_triplets = batch['gt_triplets'][i]
-                # print(f"第{i}张图像: GT三元组数量: {len(gt_triplets)}, logits数(N): {N}")
+                
                 for j in range(N):
                     gt_triplet = gt_triplets[j]
                     sub_cls = gt_triplet['sub_cls']
@@ -344,3 +345,4 @@ class VGRelationModel(nn.Module):
                     })
                 results.append(triplets)
         return results
+
