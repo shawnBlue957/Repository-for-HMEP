@@ -110,26 +110,27 @@ class VGRelationDataset(Dataset):
 
     def __getitem__(self, idx):
         """
-        通用写法，既支持多图，也支持单图（如SingleImageVGDataset构造时self.images只含一张图）。
+        A general way of writing that supports both multiple images and single images 
+        (for example, when constructing SingleImageVGDataset, self.images only contains one image).
         """
-        # 1. 获取当前图片的信息
-        # self.images为list或dict，确保都能正确索引
+        # 1. Get the information of the current image
+        # self.images is a list or dict, make sure it can be indexed correctly
         if isinstance(self.image_ids, list):
             image_id = self.image_ids[idx]
         else:
-            # 单张图场景下，允许idx=0，self.image_ids为单元素list或直接为int
+            # In a single image scenario, idx=0 is allowed, and self.image_ids is a single-element list or directly int
             image_id = self.image_ids if isinstance(self.image_ids, int) else list(self.image_ids)[idx]
 
         annos = self.imgid2annos[image_id]
 
-        # self.images为list或dict都能支持
-        # 如果是dict，image_id就是key
-        # 如果是list，image_id需要先查找对应下标
+        # self.images can be either list or dict
+        # If it is a dict, image_id is the key
+        # If it is a list, image_id needs to find the corresponding index first
         if isinstance(self.images, dict):
             img_info = self.images[image_id]
         elif isinstance(self.images, list):
-            # 通用：大多数多图场景下，self.images为list，元素的"id"为image_id
-            # 需找到id==image_id的那一项
+            # General: In most multi-image scenarios, self.images is a list, and the element's "id" is image_id
+            # Need to find the item where id==image_id
             img_info = next(img for img in self.images if img.get('id', None) == image_id)
         else:
             raise RuntimeError("self.images must be a list or dict.")
@@ -278,9 +279,10 @@ def collate_fn(batch):
     keys = batch[0].keys()
     for key in keys:
         vals = [b[key] for b in batch if key in b]
-        # 只对长度一致的tensor stack，否则用list
+        # Only use tensor stack with the same length, otherwise use list
         if isinstance(vals[0], torch.Tensor) and all(v.shape == vals[0].shape for v in vals):
             out[key] = torch.stack(vals)
         else:
             out[key] = vals
+
     return out
