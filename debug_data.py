@@ -5,31 +5,32 @@ def debug_triplet_loss(ann_file, image_id):
     with open(ann_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
-    # 构建instances id集合
+    # Build instance id collection
     instance_ids = set(inst['id'] for inst in data['instances'])
 
-    # 统计该图片的全部GT关系三元组
+    # Count all GT relationship triples of the image
     gt_annos = [ann for ann in data['annotations'] if ann['image_id'] == image_id]
-    print(f"图片 {image_id} 的原始GT三元组数量: {len(gt_annos)}")
+    print(f"The number of original GT triplets of image {image_id}:{len(gt_annos)}")
 
-    # 检查每个三元组的subject_id/object_id是否都在实例中
+    # Check if the subject_id/object_id of each triple is in the instance
     kept = []
     for ann in gt_annos:
         sid, oid = ann['subject_id'], ann['object_id']
         missing = []
         if sid not in instance_ids:
-            missing.append(f"subject_id缺失: {sid}")
+            missing.append(f"subject_id Missing: {sid}")
         if oid not in instance_ids:
-            missing.append(f"object_id缺失: {oid}")
+            missing.append(f"object_id Missing: {oid}")
         if missing:
-            print(f"被过滤三元组: {ann}，原因: {', '.join(missing)}")
+            print(f"Filtered triples: {ann}, reason: {', '.join(missing)}")
         else:
-            print(f"正常保留三元组: {ann}")
+            print(f"Normal retention of triples: {ann}")
             kept.append(ann)
-    print(f"通过代码实际保留的三元组数量: {len(kept)}")
+    print(f"The number of triplets actually retained by the code: {len(kept)}")
 
 
 if __name__ == "__main__":
     ann_file = "dataset/vg/annotations/instances_vg_test_new_test.json"
-    image_id = 2343720  # 你要检查的图片id
+    image_id = 2343720  # The id of the image you want to check
     debug_triplet_loss(ann_file, image_id)
+
