@@ -5,7 +5,6 @@ This repository contains code and resources for the HMEP project. It is designed
 
 ## Dataset Information
 - **Primary Dataset**: Please refer to the [Visual Genome](https://visualgenome.org/) dataset.
-  - DOI: [10.5281/zenodo.4004776](https://doi.org/10.5281/zenodo.4004776)
 - **Other Data Sources**: See respective sections or code comments for details.
 
 ## Code Information
