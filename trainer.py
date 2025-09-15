@@ -116,7 +116,7 @@ def main():
     parser.add_argument('--early_stop_patience', type=int, default=5, help="Patience for early stopping")
     parser.add_argument('--dropout_p', type=float, default=0.3, help="Dropout probability")
     parser.add_argument('--weight_decay', type=float, default=1e-4, help="L2 regularization")
-    # 模型结构相关超参数
+    
     parser.add_argument('--visual_feature_dim', type=int, default=512)
     parser.add_argument('--text_feature_dim', type=int, default=512)
     parser.add_argument('--coord_feature_dim', type=int, default=4)
@@ -129,7 +129,7 @@ def main():
     parser.add_argument('--use_visual', type=int, default=1, help='Whether to use visual features')
     parser.add_argument('--use_text', type=int, default=1, help='Whether to use text features')
     parser.add_argument('--use_coord', type=int, default=1, help='Whether to use coordinate features')
-    # 新增：可逆性损失相关参数
+    
     parser.add_argument('--use_invertibility_loss', type=int, default=1, help="Whether to enable reversible loss function")
     parser.add_argument('--lambda_inv', type=float, default=1.0, help="Reversibility loss function weight")
     args = parser.parse_args()
@@ -337,4 +337,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
