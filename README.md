@@ -1,7 +1,7 @@
 # Hierarchical embedding-based visual relationship prediction method with multimodal fusion（HMEP Repository）
 
 ## Description
-This repository contains code and resources for the Hierarchical Multimodal Embedding for Prediction (HMEP) project. It is designed for visual relationship prediction using multimodal fusion and hierarchical embedding techniques.
+This repository contains the official implementation of the Hierarchical Multimodal Embedding for Prediction (HMEP) framework, a novel approach for visual relationship prediction through multimodal fusion and hierarchical embedding techniques. The model addresses key challenges in visual relationship prediction by effectively integrating multimodal information, enhancing relationship representation flexibility, and ensuring global logical consistency through consistency and reversibility regularization.
 
 ## Dataset Information
 - **Primary Dataset**: The Visual Genome dataset (Version 1.4) is used for model training and evaluation.
@@ -9,11 +9,20 @@ This repository contains code and resources for the Hierarchical Multimodal Embe
   - **URL**: https://visualgenome.org/
   - **Download Link**: https://homes.cs.washington.edu/~ranjay/visualgenome/api.html
 - **Other Data Sources**: See respective sections or code comments for details.
+# Dataset Specifications:
+- 108,077 images with annotated objects and relationships
+- 150 object categories and 50 relationship types used in experiments
+- Average of 21 objects and 18 relationships per image
 
 ## Code Information
-- All scripts are written in Python.
-- Main functionalities include data preprocessing, feature extraction, multimodal fusion, and model training.
-- The code implements the HMEP framework with dynamic weighting and consistency regularization.
+- Language: Python
+- Framework: PyTorch
+- Main Functionalities:
+    - Data preprocessing and feature extraction
+    - Multimodal feature fusion using multi-head self-attention
+    - Dynamic relationship prediction with adaptive weighting
+    - Consistency and reversibility verification
+    - Model training and evaluation
 
 ## Usage Instructions
 1. **Clone this repository**:
@@ -26,8 +35,8 @@ This repository contains code and resources for the Hierarchical Multimodal Embe
     pip install -r requirements.txt
     ```
 3. **Prepare the dataset**:
-    - Download the Visual Genome dataset from the official website.
-    - Place the downloaded files in the `data/` directory.
+    - Download the Visual Genome dataset from the official website.We provide links to download processed data in the corresponding directories
+    - Place the downloaded files in the `dataset/` directory.
     - Run preprocessing scripts to extract and format data:
       ```bash
       python preprocess.py
@@ -46,21 +55,23 @@ This repository contains code and resources for the Hierarchical Multimodal Embe
 ## Requirements
 - Python >= 3.7
 - Required libraries (see `requirements.txt`):
-  - numpy
-  - pandas
-  - scikit-learn
-  - torch
-  - torchvision
-  - transformers
-  - tqdm
-  - Pillow
+  - torch >= 1.9.0
+  - torchvision >= 0.10.0
+  - transformers >= 4.20.0
+  - numpy >= 1.21.0
+  - pandas >= 1.3.0
+  - scikit-learn >= 0.24.0
+  - tqdm >= 4.62.0
+  - Pillow >= 8.3.0
+  - opencv-python >= 4.5.0
 
 ## Methodology
-- **Data Preprocessing**: 
-  - Object detection using Faster R-CNN
-  - Bounding box extraction and union box calculation
-  - Feature extraction using CLIP image and text encoders
-  - Normalization and formatting of spatial coordinates
+- **Data Preprocessing**:
+- Object detection using pre-trained Faster R-CNN with frozen parameters
+- Bounding box extraction and union box calculation (u = s ∪ o)
+- Feature extraction using CLIP image and text encoders (ViT-B/32)
+
+Spatial coordinate normalization and projection
 - **Feature Extraction**: 
   - Visual features from image regions
   - Text features from category labels
@@ -72,6 +83,9 @@ This repository contains code and resources for the Hierarchical Multimodal Embe
   - Hierarchical embedding architecture
   - Dynamic relationship prediction operator
   - Consistency and reversibility regularization
+- **Consistency Verification**:
+  - Reversibility constraint: f_predicate_i + f_predicate_j ≈ (f_union_i + f_union_j) - (α_i·f_sub_i + α_j·f_sub_j + β_i·f_obj_i + β_j·f_obj_j)
+  - Additional regularization loss L_inv for structural consistency
 - **Evaluation**: 
   - Recall@K metrics for predicate classification
   - Ablation studies for component analysis
