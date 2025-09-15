@@ -67,7 +67,7 @@ class VGRelationDataset(Dataset):
                  ann_file,
                  img_dir_root,
                  object_json,
-                 clip_model_type="ViT-B/32",
+                 clip_model_type="ViT-B/32", # https://github.com/openai/CLIP
                  device="cpu",
                  cache_dir=None):
         super().__init__()
@@ -287,4 +287,5 @@ def collate_fn(batch):
             out[key] = vals
 
     return out
+
 
