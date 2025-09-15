@@ -69,7 +69,7 @@ class FeatureFusion(nn.Module):
                 nn.Linear(hidden_dim, out_dim)
             )
         elif fusion_type == FusionStrategies.ATTENTION:
-            # 单头注意力
+            # Single-head attention
             self.attn_query = nn.Linear(hidden_dim, hidden_dim)
             self.attn_key = nn.Linear(hidden_dim, hidden_dim)
             self.attn_value = nn.Linear(hidden_dim, hidden_dim)
@@ -99,7 +99,7 @@ class FeatureFusion(nn.Module):
         self.output_norm = nn.LayerNorm(out_dim)
 
     def forward(self, features):
-        # features: List[Tensor], 每个shape为(N, in_dim)
+        # features: List[Tensor],Each shape is (N, in_dim)
         proj_feats = [proj(fea) for proj, fea in zip(self.projs, features)]  # 每个(N, hidden_dim)
 
         if self.fusion_type == FusionStrategies.CAT:
@@ -115,7 +115,7 @@ class FeatureFusion(nn.Module):
             fused = sum(gates[:, i:i + 1] * proj_feats[i] for i in range(len(proj_feats)))
             fused = self.fusion_mlp(fused)
         elif self.fusion_type == FusionStrategies.ATTENTION:
-            # 单头attention
+            # Single-head attention
             Q = self.attn_query(proj_feats[0]).unsqueeze(1)  # (N,1,H)
             K = torch.stack([self.attn_key(f) for f in proj_feats], dim=1)  # (N,M,H)
             V = torch.stack([self.attn_value(f) for f in proj_feats], dim=1)  # (N,M,H)
@@ -123,7 +123,7 @@ class FeatureFusion(nn.Module):
             fused = (attn * V).sum(1)  # (N,H)
             fused = self.fusion_mlp(fused)
         elif self.fusion_type == FusionStrategies.MH_ATTENTION:
-            # 多头注意力，先堆成(N, M, H)
+            # Multi-head attention, first stacked into (N, M, H)
             x = torch.stack(proj_feats, dim=1)  # (N, M, H)
             out, _ = self.attn(x, x, x, need_weights=False)
             fused = x + out
@@ -345,4 +345,5 @@ class VGRelationModel(nn.Module):
                     })
                 results.append(triplets)
         return results
+
 
