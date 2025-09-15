@@ -53,7 +53,7 @@ def debug_triplet_loss(ann_file, image_id, id2name, relid2name):
 
     # Count all GT relationship triples of the image
     gt_annos = [ann for ann in data['annotations'] if ann['image_id'] == image_id]
-    print(f"图片 {image_id} 的原始GT三元组数量: {len(gt_annos)}")
+    print(f"image {image_id} The number of original GT triplets: {len(gt_annos)}")
 
     # Check if the subject_id/object_id of each triple is in the instance
     kept = []
@@ -123,7 +123,7 @@ if __name__ == "__main__":
         device=device,
         cache_dir=cache_dir
     )
-    print("SingleImageVGDataset长度：", len(dataset))
+    print("SingleImageVGDatasetlength：", len(dataset))
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
 
     num_predicates = len(dataset.relationships)
@@ -172,3 +172,4 @@ if __name__ == "__main__":
         if not got_data:
 
             print("Warning: Dataloader did not generate any batches! Please check your dataset construction.")
+
