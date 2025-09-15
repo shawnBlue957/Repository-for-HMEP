@@ -33,7 +33,7 @@ def split_dataset(input_json_path, val_ratio=0.2, random_seed=42):
 
     # 1. Get all image information and scramble it
     all_images_info = original_data['images']
-    random.shuffle(all_images_info) # 直接打乱列表
+    random.shuffle(all_images_info) # Shuffle the list directly
 
     # 2. Divide image information and image ID
     num_total_images = len(all_images_info)
@@ -92,13 +92,13 @@ def split_dataset(input_json_path, val_ratio=0.2, random_seed=42):
     try:
         with open(val_output_path, 'w') as f_val:
             json.dump(val_dataset, f_val, indent=2) 
-        print(f"验证集已保存到: {val_output_path}")
+        print(f"The validation set has been saved to: {val_output_path}")
 
         with open(new_test_output_path, 'w') as f_new_test:
             json.dump(new_test_dataset, f_new_test, indent=2)
-        print(f"新测试集已保存到: {new_test_output_path}")
+        print(f"The new test set has been saved to: {new_test_output_path}")
     except Exception as e:
-        print(f"保存文件时发生错误: {e}")
+        print(f"An error occurred while saving the file: {e}")
 
 if __name__ == "__main__":
     # --------------------------------------------------------------------
@@ -117,3 +117,4 @@ if __name__ == "__main__":
                       val_ratio=validation_ratio,
 
                       random_seed=seed_for_splitting)
+
