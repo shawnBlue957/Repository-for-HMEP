@@ -9,3 +9,4 @@ Pillow
 clip
 h5py
 pyyaml
+clip https://github.com/openai/CLIP
