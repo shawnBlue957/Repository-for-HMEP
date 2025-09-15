@@ -1,12 +1,10 @@
-torch
-torchvision
-torchmetrics
-numpy
-pandas
-scikit-learn
-tqdm
-Pillow
-clip
-h5py
-pyyaml
+torch >= 1.9.0
+torchvision >= 0.10.0
+transformers >= 4.20.0
+numpy >= 1.21.0
+pandas >= 1.3.0
+scikit-learn >= 0.24.0
+tqdm >= 4.62.0
+Pillow >= 8.3.0
+opencv-python >= 4.5.0
 clip https://github.com/openai/CLIP
