@@ -143,7 +143,8 @@ class VGRelationDataset(Dataset):
         sub_text_feats, obj_text_feats, phrases, labels = [], [], [], []
         gt_triplets = []
 
-        # 图像全局特征
+        # Global image features
+
         if self.cache:
             image_feat = self.cache.load(image_id, "image")
             if image_feat is None:
@@ -229,7 +230,7 @@ class VGRelationDataset(Dataset):
             phrases.append(phrase)
             labels.append(relation_id)
 
-            # GT三元组（PredCLS下必须含subject/object类别和box）
+            # GT triplet (must contain subject/object category and box under PredCLS)
             sub_box_xyxy = [
                 float(sub_box[0]),
                 float(sub_box[1]),
@@ -286,3 +287,4 @@ def collate_fn(batch):
             out[key] = vals
 
     return out
+
