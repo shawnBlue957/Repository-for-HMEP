@@ -10,9 +10,9 @@ This repository contains the official implementation of the Hierarchical Multimo
   - **Download Link**: https://homes.cs.washington.edu/~ranjay/visualgenome/api.html
 
 - **Additional Dataset**: VRD (Visual Relationship Detection) dataset.
-  - **简介**：VRD 数据集用于视觉关系检测/预测任务，提供图像中主体（subject）、谓词（predicate）与客体（object）三元组标注，是视觉关系理解领域的经典基准之一。
-  - **引用**：Lu, C., Krishna, R., Bernstein, M., & Fei-Fei, L. (2016). *Visual Relationship Detection with Language Priors*. In *ECCV 2016*.
-  - **下载链接**：https://cs.stanford.edu/people/ranjaykrishna/vrd/
+  -**Introduction**: The VRD dataset is used for visual relation detection/prediction tasks. It provides triplet annotations of subject, predicate, and object in images and is one of the classic benchmarks in the field of visual relation understanding.
+  - **cite**：Lu, C., Krishna, R., Bernstein, M., & Fei-Fei, L. (2016). *Visual Relationship Detection with Language Priors*. In *ECCV 2016*.
+  - **URL**：https://cs.stanford.edu/people/ranjaykrishna/vrd/
 
 - **Other Data Sources**: See respective sections or code comments for details.
 
