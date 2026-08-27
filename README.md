@@ -6,8 +6,7 @@ This repository contains the official implementation of the Hierarchical Multimo
 ## Dataset Information
 - **Primary Dataset**: The Visual Genome dataset (Version 1.4) is used for model training and evaluation.
   - **DOI**: 10.5281/zenodo.4004776
-  - **URL**: https://visualgenome.org/
-  - **Download Link**: https://homes.cs.washington.edu/~ranjay/visualgenome/api.html
+  - **URL**: https://homes.cs.washington.edu/~ranjay/visualgenome/api.html
 
 - **Additional Dataset**: VRD (Visual Relationship Detection) dataset.
   -**Introduction**: The VRD dataset is used for visual relation detection/prediction tasks. It provides triplet annotations of subject, predicate, and object in images and is one of the classic benchmarks in the field of visual relation understanding.
