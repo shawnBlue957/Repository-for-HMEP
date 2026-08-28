@@ -1,5 +1,7 @@
 # Hierarchical embedding-based visual relationship prediction method with multimodal fusion（HMEP Repository）
 
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.22147896-blue.svg)](https://doi.org/10.5281/zenodo.22147896)
+
 ## Description
 This repository contains the official implementation of the Hierarchical Multimodal Embedding for Prediction (HMEP) framework, a novel approach for visual relationship prediction through multimodal fusion.
 
@@ -9,7 +11,7 @@ This repository contains the official implementation of the Hierarchical Multimo
   - **URL**: https://homes.cs.washington.edu/~ranjay/visualgenome/api.html
 
 - **Additional Dataset**: VRD (Visual Relationship Detection) dataset.
-  -**Introduction**: The VRD dataset is used for visual relation detection/prediction tasks. It provides triplet annotations of subject, predicate, and object in images and is one of the classic benchmarks in the field of visual relation understanding.
+  -**Introduction**: The VRD dataset is used for visual relation detection/prediction tasks. It provides triplet annotations of subject, predicate, and object in images and is one of the classic benchmark datasets in this field.
   - **cite**：Lu, C., Krishna, R., Bernstein, M., & Fei-Fei, L. (2016). *Visual Relationship Detection with Language Priors*. In *ECCV 2016*.
   - **URL**：https://cs.stanford.edu/people/ranjaykrishna/vrd/
 
