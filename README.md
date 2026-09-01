@@ -1,6 +1,6 @@
 # Hierarchical embedding-based visual relationship prediction method with multimodal fusion（HMEP Repository）
 
-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.22147896-blue.svg)](https://doi.org/10.5281/zenodo.22147896)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.22147896-blue.svg)](https://doi.org/10.5281/zenodo.22231950)
 
 ## Description
 This repository contains the official implementation of the Hierarchical Multimodal Embedding for Prediction (HMEP) framework, a novel approach for visual relationship prediction through multimodal fusion.
