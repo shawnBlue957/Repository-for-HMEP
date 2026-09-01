@@ -11,7 +11,7 @@ authors:
     given-names: Ruihua
 message: "If you use this repository, please cite it using the following metadata."
 repository-code: "https://github.com/shawnBlue957/Repository-for-HMEP"
-url: "https://doi.org/10.5281/zenodo.22147896"
+url: "https://doi.org/10.5281/zenodo.22231950"
 preferred-citation:
   type: dataset
   title: "Hierarchical embedding-based visual relationship prediction method with multimodal fusion（HMEP Repository）"
@@ -24,6 +24,6 @@ preferred-citation:
       given-names: Heng
     - family-names: Qi
       given-names: Ruihua
-  doi: "10.5281/zenodo.22147896"
+  doi: "10.5281/zenodo.22231950"
   url: "https://doi.org/10.5281/zenodo.22147896"
-  version: "1.0.0"
+  version: "1.0.1"
