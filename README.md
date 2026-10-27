@@ -1,5 +1,7 @@
 # Visual Relationship Prediction with Relational Category Modeling (VRP-Cat)
 
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.22231950-blue.svg)](https://doi.org/10.5281/zenodo.22231950)
+
 A reference implementation for visual relationship prediction under the PredCls protocol. The core premise is that **hom-sets in a relational category may be empty ($\varnothing$)**. Mainstream implementations instead constrain predictions to a probability simplex over $K$ nonempty predicate classes, making it structurally impossible to express that two objects have no relationship. This repository introduces $\varnothing$ and replaces within-pair normalization with unnormalized intensities.
 
 ## Main Results (PredCls, Logit Scoring, Mean ± Standard Deviation over 3 Seeds)
@@ -52,6 +54,33 @@ numpy
 ```bash
 pip install -r requirements.txt
 ```
+
+## Dataset Information
+- **Primary Dataset**: The Visual Genome dataset (Version 1.4) is used for model training and evaluation.
+  - **DOI**: 10.5281/zenodo.4004776
+  - **URL**: https://homes.cs.washington.edu/~ranjay/visualgenome/api.html
+
+- **Additional Dataset**: VRD (Visual Relationship Detection) dataset.
+  - **Introduction**: The VRD dataset is used for visual relation detection/prediction tasks. It provides triplet annotations of subject, predicate, and object in images and is one of the classic benchmark datasets in this field.
+  - **Citation**:Lu, C., Krishna, R., Bernstein, M., & Fei-Fei, L. (2016). *Visual Relationship Detection with Language Priors*. In *ECCV 2016*.
+  - **URL**:https://cs.stanford.edu/people/ranjaykrishna/vrd/
+
+- **Other Data Sources**: See respective sections or code comments for details.
+
+### Original Processed Data Downloads
+
+The download links and extraction codes supplied with the original repository are retained:
+
+- [Processed VG annotations](https://pan.baidu.com/s/13TK6c1QN_p9loLy6dGHD-w), extraction code: `2rpj`; see [annotation download instructions](dataset/vg/annotations/readme.md).
+- [Processed scene graph annotations](https://pan.baidu.com/s/1ip_AaTaLLd1O29_qS2l10Q), extraction code: `kqsv`; see [scene graph download instructions](dataset/vg_scene_graph_annot/readme.md).
+- [Visual Genome images](https://homes.cs.washington.edu/~ranjay/visualgenome/api.html); see [image download instructions](dataset/vg/images/readme.md).
+
+For the directory layout and preprocessing required by the current implementation, follow [Data Preparation](#data-preparation).
+
+### Dataset Specifications (Visual Genome)
+- 108,077 images with annotated objects and relationships
+- 150 object categories and 50 relationship types used in experiments
+- Average of 21 objects and 18 relationships per image
 
 ## Data Preparation
 
@@ -134,7 +163,36 @@ python tools/small_sample_experiment.py ... --diag-path-auc
 
 ## Citation
 
-If this repository helps your research, please cite the corresponding paper (title and author information to be added).
+The original repository identifies the associated work as *Hierarchical Embedding-Based Visual Relationship Prediction Method with Multimodal Fusion*, by Yunhao Sun, Xiaoao Chen, Heng Chen, and Ruihua Qi. Its original citation labels it as a 2024 preprint.
+
+The repository/archive DOI recorded in the original README and citation metadata is [10.5281/zenodo.22231950](https://doi.org/10.5281/zenodo.22231950). The original `CITATION.cff` also records version `1.0.1` and the URL [10.5281/zenodo.22147896](https://doi.org/10.5281/zenodo.22147896). Both identifiers are retained as originally provided; they should not be interpreted as a newly verified journal-article DOI or a release identifier for the current code.
+
+If you use this repository or the associated datasets in your research, please cite:
+
+```bibtex
+@misc{visualgenome,
+  title     = {Visual Genome Dataset},
+  author    = {Krishna, Ranjay and et al.},
+  year      = {2017},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.4004776},
+  url       = {https://visualgenome.org/}
+}
+
+@inproceedings{lu2016vrd,
+  title     = {Visual Relationship Detection with Language Priors},
+  author    = {Lu, Cewu and Krishna, Ranjay and Bernstein, Michael and Fei-Fei, Li},
+  booktitle = {European Conference on Computer Vision (ECCV)},
+  year      = {2016}
+}
+
+@article{hmep2024,
+  title   = {Hierarchical Embedding-Based Visual Relationship Prediction Method with Multimodal Fusion},
+  author  = {Sun, Yunhao and Chen, Xiaoao and Chen, Heng and Qi, Ruihua},
+  journal = {Preprint},
+  year    = {2024}
+}
+```
 
 ## License
 
