@@ -1,4 +1,4 @@
-"""T4 不变量与恒等式测试（模块设计文档 §4.4）—— T4-a … T4-i。"""
+"""T4 Invariant and Identity Testing (Module Design Document §4.4) – T4-a … T4-i."""
 from __future__ import annotations
 
 import torch
@@ -31,11 +31,11 @@ def test_T4c_smw_equals_torch_inverse(hp_tiny):
     smw = smw_inverse(A, hp_tiny.EPS_G)
     explicit = torch.linalg.inv(G)
     rel = (smw - explicit).norm() / explicit.norm()
-    assert rel < 1e-4, f"相对误差 {rel:.3e}"
+    assert rel < 1e-4, f"relative error {rel:.3e}"
 
 
 def test_T4d_z0_permutation_invariant(hp_tiny):
-    """z_0 天然对物体索引置换不变（终稿式2 的重要副产品）—— M1.2 的核心不变量。"""
+    """z_0 is naturally invariant to object index permutation (an important by-product of the final formula 2) - the core invariant of M1.2."""
     torch.manual_seed(0)
     b, N, d = 2, 6, hp_tiny.D
     h = {m: torch.randn(b, N, d) for m in ("v", "t", "s")}
@@ -49,24 +49,24 @@ def test_T4d_z0_permutation_invariant(hp_tiny):
     perm = torch.randperm(N)
     h_p = {m: h[m][:, perm, :] for m in h}
     _, Z_p = intra_layer_aggregate(h_p, W_a, masks)
-    assert torch.allclose(Z[:, 0], Z_p[:, 0], atol=1e-6), "z_0 必须置换不变"
+    assert torch.allclose(Z[:, 0], Z_p[:, 0], atol=1e-6), "z_0 Must be replaced unchanged"
 
 
 def test_T4e_piv1_identity_zero():
-    """PIV₁ ≡ 0 是恒等式（join 交换性），不是实验观测。"""
+    """PIV₁ ≡ 0 is an identity (join commutativity), not an experimental observation."""
     x = torch.randn(3, 5, 8)
     assert float(piv1(x, x)) < 1e-6
 
 
 def test_T4f_degenerate_Vr_zero_any_group_size():
-    """per-relation 常量下 V_r ≡ 0 对**任何组大小**都成立（F7 的解析前提）。"""
+    """V_r ≡ 0 is true for **any group size** under per-relation constants (parsing premise of F7)."""
     K = 5
     base = torch.randn(K, 2)
     for gsize in (1, 2, 5, 13):
         pi = base.repeat_interleave(gsize, dim=0)
         y = torch.arange(K).repeat_interleave(gsize)
         V_r, _, _, _ = estimate_variance(pi, y, K)
-        assert torch.allclose(V_r, torch.zeros(K), atol=1e-10), f"组大小 {gsize} 时 V_r 非零"
+        assert torch.allclose(V_r, torch.zeros(K), atol=1e-10), f"group size {gsize} time V_r non-zero"
 
 
 def test_T4g_two_hop_is_true_square_not_row_scaling(hp_tiny):
@@ -77,10 +77,10 @@ def test_T4g_two_hop_is_true_square_not_row_scaling(hp_tiny):
 
 
 def test_T4h_middle_band_total_penalty_zero():
-    """中间段（θ_min ≤ V_r ≤ θ_max）双向铰链均为 0（C9）。
+    """The two-way hinges in the middle section (θ_min ≤ V_r ≤ θ_max) are both 0 (C9).
 
-    ⚠️ 2026-10-18：`gate_lower` 默认 `rel=True`（相对方差），
-    故此处显式 `rel=False` 以在**绝对量纲**下验证双向铰链的中段恒零性质。
+    ⚠️ 2026-10-18: `gate_lower` defaults to `rel=True` (relative variance),
+    Therefore, `rel=False` is explicitly stated here to verify the constant zero property of the two-way hinge in the middle under **absolute dimensions**.
     """
     V_r = torch.tensor([1.0, 3.0, 5.0, 9.0])
     tmin, tmax = 0.48341, 9.66821
@@ -90,7 +90,7 @@ def test_T4h_middle_band_total_penalty_zero():
 
 
 def test_T4i_inference_matches_train_main_path(hp_tiny):
-    """M6.5：推理路径与训练主路的 p_ij 必须逐元素一致。"""
+    """M6.5: p_ij of the inference path and the main training path must be consistent element by element."""
     model = build_model(hp_tiny)
     model.eval()
     b = make_batch(hp_tiny)

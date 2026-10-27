@@ -1,29 +1,29 @@
-"""UnRel 数据集加载器（接口对齐 VRD / VG150 / GQA）。
+"""UnRel dataset loader (interface aligned VRD/VG150/GQA).
 
-## 为什么需要单独的加载器
+## Why do we need a separate loader?
 
-UnRel（Peyre et al., ICCV 2017）是**纯评测集**：`annotations.mat` 为 1071×1 的
-评测标注，**没有 train/test 划分**，平均 1.4 条关系/图 ⟹ 不足以训练。
+UnRel (Peyre et al., ICCV 2017) is a **pure evaluation set**: `annotations.mat` is 1071×1
+Evaluation annotation, **no train/test split**, average 1.4 relationships/graph ⟹ not enough for training.
 
-故本文按官方标准用法做**跨数据集零样本迁移**：
-    在 VRD（70 谓词）上训练 ⟹ 在 UnRel 上评测不寻常关系。
+Therefore, this article performs **zero sample migration across data sets** according to the official standard usage:
+    Trained on VRD (70 predicates) ⟹ Evaluating unusual relationships on UnRel.
 
-## 关键：索引空间必须映射到源域（VRD）
+## Key: The index space must be mapped to the source domain (VRD)
 
-零样本要求「同一个模型权重能直接吃目标域数据」，因此：
-- **谓词**：UnRel 的 18 个谓词名全部 ⊆ VRD 的 70 谓词，
-  故把谓词映射为 **VRD 的 1-based 谓词号**（`K = 70`，与源域模型输出维一致）。
-- **物体类**：同样映射到 **VRD 的物体词表**；UnRel 中不在 VRD 词表内的类 → 0（background）。
-  这是零样本的**诚实代价**（目标域未知物体无法用源域嵌入表示），必须在论文中说明。
+Zero sample requires ”the same model weight can directly eat the target domain data”, therefore:
+- **Predicate**: All 18 predicate names of UnRel ⊆ 70 predicate names of VRD,
+  Therefore, the predicate is mapped to the 1-based predicate number of **VRD** (`K = 70`, consistent with the output dimension of the source domain model).
+- **Object class**: also mapped to **VRD’s object vocabulary**; classes in UnRel that are not in the VRD vocabulary → 0 (background).
+  This is the **honesty price** of zero samples (unknown objects in the target domain cannot be represented by source domain embeddings) and must be stated in the paper.
 
-`pred_space="own"` / `obj_space="own"` 时退化为 UnRel 自有词表（仅作诊断或自训自测用）。
+When `pred_space=”own”` / `obj_space=”own”` is used, it degenerates into UnRel’s own vocabulary (only for diagnosis or self-training and self-testing).
 
-## 产物格式
+## Product format
 
 `~/vrp/data/unrel/artifacts/unrel_annotations.json`
     {"predicates": [...18], "triplets": [{image_id, subject_cat, object_cat,
      predicate, s_box, o_box}, ...]}
-图片：`~/vrp/data/unrel/images/{image_id}.jpg`
+Image: `~/vrp/data/unrel/images/{image_id}.jpg`
 """
 from __future__ import annotations
 
@@ -48,9 +48,9 @@ def _root() -> str:
 
 @dataclass
 class URelation:
-    subject: int          # 图内物体局部 id（0-based）
+    subject: int          #Local id of the object in the picture (0-based)
     object: int
-    predicate: int        # 1-based 谓词号（默认在 VRD 空间）
+    predicate: int        # 1-based predicate number (default in VRD space)
 
 
 @dataclass
@@ -62,7 +62,7 @@ class URecord:
 
 
 class UnRel:
-    """UnRel 只读加载器（默认映射到 VRD 索引空间，供零样本评测）。"""
+    """UnRel read-only loader (default mapped to VRD index space, for zero-sample evaluation)."""
 
     def __init__(self, root: Optional[str] = None, top_objects: int = 200,
                  pred_space: str = "vrd", obj_space: str = "vrd"):
@@ -79,8 +79,8 @@ class UnRel:
         ap = os.path.join(self.artifacts, "unrel_annotations.json")
         if not os.path.exists(ap):
             raise FileNotFoundError(
-                f"缺少 UnRel 标注 {ap}\n  先运行：python tools/prepare_unrel.py "
-                f"--root <unrel 解压根> --out artifacts/unrel")
+                f"missing UnRel mark {ap}\n  First run: python tools/prepare_unrel.py "
+                f"--root <unrel Unzip the root> --out artifacts/unrel")
         with open(ap, encoding="utf-8") as f:
             d = json.load(f)
         self.predicates_raw: List[str] = list(d["predicates"])
@@ -89,7 +89,7 @@ class UnRel:
         if self.pred_space == "vrd":
             from .vrd_data import VRD
             vrd = VRD()
-            self.predicate_classes = list(vrd.predicate_classes)   # 含 background
+            self.predicate_classes = list(vrd.predicate_classes)   # with background
             self.K = vrd.K                                          # 70
             self._p2i = {p: i + 1 for i, p in enumerate(self.predicate_classes[1:])}
             self.object_classes = list(vrd.object_classes)
@@ -117,10 +117,10 @@ class UnRel:
                 self._o2i = {n: i + 1 for i, n in enumerate(top)}
             self.source = "unrel"
 
-        # 谓词覆盖自检：VRD 空间下应 18/18 命中
+        # Predicate coverage self-test: 18/18 should hit in VRD space
         miss = [p for p in self.predicates_raw if p not in self._p2i]
         if miss:
-            raise ValueError(f"谓词无法映射到 {self.pred_space} 词表：{miss}")
+            raise ValueError(f"predicate cannot be mapped to {self.pred_space} Glossary:{miss}")
 
     # ------------------------------------------------------------------
     def image_dir(self, split: str = "test") -> Optional[str]:
@@ -128,14 +128,14 @@ class UnRel:
         return d if os.path.isdir(d) else None
 
     def pred_indices(self) -> List[int]:
-        """UnRel 谓词在目标空间中的 1-based 谓词号（升序）。"""
+        """UnRel predicate’s 1-based predicate number in target space (in ascending order)."""
         return sorted(self._p2i[p] for p in self.predicates_raw)
 
     def load_split(self, split: str = "test", limit: Optional[int] = None) -> List[URecord]:
         if split.startswith("train"):
             raise ValueError(
-                "UnRel 无训练划分（annotations.mat 为 1071 图评测标注，约 1.4 条关系/图）。\n"
-                "  请使用跨数据集零样本协议：VRD 训练 → UnRel 评测\n"
+                "UnRel No training partition (annotations.mat for 1071 Figure evaluation annotation, approx. 1.4 relationship/Figure).\n"
+                "  Please use cross-dataset zero-sample protocol: VRD training → UnRel Review\n"
                 "  （tools/zeroshot_vrd_to_unrel.py）。")
         key = f"{split}:{limit}"
         if key in self._cache:

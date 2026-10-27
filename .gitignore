@@ -1,4 +1,4 @@
-# 数据与权重（体积大、或受各自许可约束，不纳入版本控制）
+# Data and weights (large in size, or subject to respective licenses, not included in version control)
 data/
 artifacts/
 detectors/
@@ -6,19 +6,19 @@ detectors/
 *.pth
 *.pkl
 
-# 实验结果与缓存
+# Experiment results and caching
 results*/
 release/
 __pycache__/
 *.py[cod]
 *.log
 
-# 虚拟环境
+# virtual environment
 .venv/
 venv*/
 env/
 
-# 编辑器 / 系统
+# Editor / system
 .idea/
 .vscode/
 .DS_Store

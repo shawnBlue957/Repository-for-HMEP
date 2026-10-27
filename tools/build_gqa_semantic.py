@@ -1,17 +1,17 @@
-"""构建 GQA 的 CLIP 语义张量 + 逆谓词映射。
+"""Constructing GQA’s CLIP semantic tensor + inverse predicate mapping.
 
-与 `build_vrd_semantic.py` 同构，面向 GQA 的 **100 谓词 / 200 物体类**。
+Isomorphic to `build_vrd_semantic.py`, **100 predicates / 200 object classes** for GQA.
 
-逆谓词表来源
+Inverse predicate table source
 ------------
-GQA 的逆关系不像 VRD 那样需要人工语义分组：`prepare_gqa.py` 已从数据
-统计出 `cycles`（互逆谓词对，8 对）。本脚本直接读取该产物
-`artifacts/gqa_train_inv_pairs.json` 的 `cycles` 字段，**不做人工判定**，
-故 MIR@K 的覆盖范围完全可复核。
+GQA’s inverse relationship does not require artificial semantic grouping like VRD: `prepare_gqa.py` has been obtained from the data
+Count `cycles` (reciprocal predicate pairs, 8 pairs). This script directly reads the product
+`cycles` field of `artifacts/gqa_train_inv_pairs.json`, **no manual judgment**,
+Therefore, the coverage of MIR@K is fully reviewable.
 
-产物：`artifacts/gqa_semantic.pt`
+Product: `artifacts/gqa_semantic.pt`
     obj_txt (201,512) / v_txt / v_inv / M_inv / J / c_dag / q_feat
-    v_*_d / M_inv_d / c_dag_d / inv_idx (K+1,) / predicates 等
+    v_*_d / M_inv_d / c_dag_d / inv_idx (K+1,) / predicates etc.
 """
 from __future__ import annotations
 
@@ -41,13 +41,13 @@ PRED_TMPL = [
 
 
 def load_inv_groups(ds) -> list:
-    """从 prepare_gqa 的产物读 cycles（互逆对），返回 [[a],[b]] 形式的组对。
+    """Read cycles (reciprocal pairs) from the product of prepare_gqa and return pairs of the form [[a],[b]].
 
-    只保留两端都在谓词表内的对；缺一端则无法评测，直接丢弃并报告。
+    Only pairs with both ends in the predicate table are retained; if one end is missing, it cannot be evaluated and is directly discarded and reported.
     """
     p = os.path.join(ds.artifacts, "gqa_train_inv_pairs.json")
     if not os.path.exists(p):
-        raise FileNotFoundError(f"缺少逆谓词统计：{p}（先运行 prepare_gqa.py）")
+        raise FileNotFoundError(f"Missing inverse predicate statistics:{p} (Run first prepare_gqa.py)")
     with open(p, encoding="utf-8") as f:
         d = json.load(f)
     valid = set(ds.predicates)
@@ -60,17 +60,17 @@ def load_inv_groups(ds) -> list:
             groups.append(([a], [b]))
         else:
             dropped.append((a, b))
-    print(f"[inv] 读到 cycles {len(d.get('cycles', []))} 对 → 有效 {len(groups)} 对")
+    print(f"[inv] read cycles {len(d.get('cycles', []))} Yes → valid {len(groups)} Yes")
     if dropped:
-        print(f"[inv] 丢弃 {len(dropped)} 对（不在谓词表内）：{dropped[:4]}")
+        print(f"[inv] discard {len(dropped)} Right (not in the predicate table): {dropped[:4]}")
     return groups
 
 
 def build_inv_idx(pred_names_1b, inv_groups):
-    """谓词名列表（含 background，索引即 1-based 谓词号）→ 逆谓词索引数组。
+    """Predicate name list (including background, index is 1-based predicate number) → inverse predicate index array.
 
-    ⚠️ **数组位置与数组值都是 1-based 谓词号**（无逆为 -1），
-       值为 **0-based 下标**；读取端统一 `rp = int(inv_idx[p+1]) - 1`。
+    ⚠️ **Array position and array value are both 1-based predicate numbers** (no inverse is -1),
+       The value is **0-based subscript**; read-side uniform `rp = int(inv_idx[p+1]) - 1`.
     """
     name_to_1b = {n: i for i, n in enumerate(pred_names_1b)}
     inv = [-1] * len(pred_names_1b)
@@ -90,7 +90,7 @@ def main() -> int:
     preds_1b = list(ds.predicate_classes)
     objs = ds.object_classes
     print("=" * 78)
-    print(f"GQA 语义张量构建 | 谓词 {K} | 物体类 {ds.num_objects}")
+    print(f"GQA Semantic tensor construction | predicate {K} | object class {ds.num_objects}")
     print("=" * 78)
 
     inv_groups = load_inv_groups(ds)
@@ -114,11 +114,11 @@ def main() -> int:
     M_inv = v_txt @ v_inv.t()
     diag = M_inv.diag()
     off = M_inv - torch.diag(torch.diag(M_inv))
-    print(f"式(15) M_inv {tuple(M_inv.shape)} 值域 "
+    print(f"formula(15) M_inv {tuple(M_inv.shape)} range "
           f"[{float(M_inv.min()):.4f}, {float(M_inv.max()):.4f}]")
-    print(f"  对角(谓词↔其逆) {float(diag.mean()):.4f} | "
-          f"非对角(随机配对) {float(off.mean()):.4f} | "
-          f"差 {float(diag.mean()-off.mean()):+.4f}")
+    print(f"  Diagonal(predicate↔Its reverse) {float(diag.mean()):.4f} | "
+          f"off diagonal(random pairing) {float(off.mean()):.4f} | "
+          f"Poor {float(diag.mean()-off.mean()):+.4f}")
 
     J = torch.zeros_like(M_inv)
     J.scatter_(-1, M_inv.argmax(dim=-1).unsqueeze(-1), 1.0)
@@ -134,7 +134,7 @@ def main() -> int:
             art = "an" if o[0].lower() in "aeiou" else "a"
             prompts.append(f"{art} photo of {o}, a type of object")
     obj_txt = enc.encode_text(prompts)
-    print(f"obj_txt {tuple(obj_txt.shape)} 范数均值 "
+    print(f"obj_txt {tuple(obj_txt.shape)} norm mean "
           f"{float(obj_txt.norm(dim=-1).mean()):.4f}")
 
     # ---------- q_feat ----------
@@ -143,9 +143,9 @@ def main() -> int:
         qp.extend(t.format(pred=p) for t in PRED_TMPL)
     q_feat = enc.encode_text(qp).view(K, len(PRED_TMPL), -1).mean(dim=1)
     q_feat = F.normalize(q_feat, dim=-1)
-    print(f"q_feat {tuple(q_feat.shape)}（{len(PRED_TMPL)} 模板均值）")
+    print(f"q_feat {tuple(q_feat.shape)}（{len(PRED_TMPL)} template mean)")
 
-    # ---------- 降维到模型 d ----------
+    # ---------- Dimensionality reduction to model d ----------
     from vrp.config import HyperParams
     d = HyperParams().D
     g = torch.Generator().manual_seed(20261017)
@@ -155,9 +155,9 @@ def main() -> int:
     M_inv_d = v_txt_d @ v_inv_d.t()
     c_dag_d = (J @ v_inv_d) / deg
     agree = int((M_inv.argmax(-1) == M_inv_d.argmax(-1)).sum())
-    print(f"降维 512→{d}：M_inv argmax 一致 {agree}/{K} ({100.0*agree/K:.0f}%)")
+    print(f"Dimensionality reduction 512→{d}: M_inv argmax consistent {agree}/{K} ({100.0*agree/K:.0f}%)")
 
-    # ---------- 逆谓词表 + 自检 ----------
+    # ---------- Inverse predicate table + self-test ----------
     inv_idx = build_inv_idx(ds.predicate_classes, inv_groups)
     n_self = n_oob = n_asym = n_chain = 0
     for i in range(1, K + 1):
@@ -182,30 +182,30 @@ def main() -> int:
             continue
         if inv_idx[q + 1] + 1 != k:
             n_chain += 1
-    print(f"\n[自检] 自指 {n_self} | 值域越界 {n_oob} | 组首非对称 {n_asym} | "
-          f"链不闭合 {n_chain}")
+    print(f"\n[self-test] self-referential {n_self} | Value range out of bounds {n_oob} | Head asymmetry {n_asym} | "
+          f"Chain is not closed {n_chain}")
     if n_self or n_oob or n_asym or n_chain:
         raise AssertionError(
-            f"逆谓词表不自洽：自指 {n_self}、越界 {n_oob}、"
-            f"非对称 {n_asym}、链不闭合 {n_chain}")
+            f"Inverse predicate table is not self-consistent: self-referential {n_self}, Cross the line {n_oob}、"
+            f"asymmetric {n_asym}, Chain is not closed {n_chain}")
 
     covered = [i for i in range(1, K + 1) if inv_idx[i] >= 0]
-    print(f"\n逆谓词表：{len(covered)}/{K} 个谓词有可判定的逆")
+    print(f"\n Inverse predicate table:{len(covered)}/{K} predicate has a decidable inverse")
     for i in covered:
         print(f"   {ds.predicate_classes[i]:<20} → "
               f"{ds.predicate_classes[inv_idx[i] + 1]}")
 
-    # 覆盖率：用 val 统计（train 太大且与训练同分布）
+    # Coverage: Use val statistics (train is too large and distributed with the same distribution as training)
     nrel = tot = 0
     for r in ds.load_split("val"):
         for rel in r.relations:
             nrel += 1
             if inv_idx[rel.predicate] >= 0:
                 tot += 1
-    print(f"\nval 关系 {nrel:,} 条，其中 {tot:,} 条落在可评测谓词上 "
+    print(f"\nval relationship {nrel:,} strips, among which {tot:,} The bar falls on the evaluable predicate "
           f"= {100.0*tot/max(nrel,1):.2f}%")
-    print("备注：GQA 的 'to the left of'/'to the right of' 占 89.3%，"
-          "主指标应用 mR@K，并建议补「排除左右」的对照。")
+    print("Remarks: GQA of 'to the left of'/'to the right of' account for 89.3%, "
+          "Main indicator application mR@K, It is also recommended to add a comparison of ”excluding left and right”.")
     print("=" * 78)
 
     out = os.path.join(ART, "gqa_semantic.pt")
@@ -220,7 +220,7 @@ def main() -> int:
         "coverage_val": {"n_rel": nrel, "n_covered": tot,
                          "pct": round(100.0 * tot / max(nrel, 1), 2)},
     }, out)
-    print(f"[落盘] {out}")
+    print(f"[Place the order] {out}")
     return 0
 
 

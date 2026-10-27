@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CLIP ViT-B/32 分词器 + 文本塔（从既有 OpenAI JIT 存档离线重建，CPU 可跑）。
+"""CLIP ViT-B/32 tokenizer + text tower (offline reconstruction from existing OpenAI JIT archive, CPU-runable).
 
-背景（承接 `clip_cpu.py` 的视觉塔）：
-  `ViT-B-32.pt` 是 **CUDA 追踪**导出的 TorchScript 存档，其 `visual(x)` 硬编码
-  `cuda:0`，在本机（torch 2.14.1+cpu）无法直接执行。但其 `state_dict()` 可在 CPU
-  正常提取，且**文本塔权重完整**：
+Background (visual tower inherited from `clip_cpu.py`):
+  `ViT-B-32.pt` is a **CUDA trace** exported TorchScript archive with `visual(x)` hardcoded
+  `cuda:0` cannot be executed directly on this machine (torch 2.14.1+cpu). But its `state_dict()` is available on CPU
+  Normal extraction, and **text tower weight is complete**:
 
-      token_embedding.weight  (49408, 512)   ← BPE 词向量
-      positional_embedding   (77, 512)      ← 上下文位置嵌入（截断至 77）
-      transformer.resblocks.{0..11}.*       ← 与视觉塔同构的 12 层
+      token_embedding.weight (49408, 512) ← BPE word vector
+      positional_embedding (77, 512) ← contextual positional embedding (truncated to 77)
+      transformer.resblocks.{0..11}.* ← 12 layers isomorphic to the visual tower
       ln_final.{weight,bias} (512,)
-      text_projection        (512, 512)     ← 投影到联合嵌入空间
+      text_projection (512, 512) ← Projection to joint embedding space
       logit_scale            ()
 
-  此前的障碍是**只有权重、没有分词器**（`bpe_simple_vocab_16e6.txt.gz` 缺失）。
-  现已补齐官方词表 + `regex`/`ftfy` 依赖，故文本塔可在 CPU 完整重建。
+  The previous obstacle was that there were only weights and no tokenizer (`bpe_simple_vocab_16e6.txt.gz` was missing).
+  The official vocabulary + `regex`/`ftfy` dependencies have been completed, so the text tower can be completely rebuilt on the CPU.
 
-自校验（`__main__`）：
-  ① tokenize("a photo of a dog") → 词表 id 全 < 49408；
-  ② 图文跨模态对齐：一张狗的照片与 "a photo of a dog" 的余弦相似度
-     显著高于与 "a photo of a cat" 的余弦相似度 —— **证明文本塔与视觉塔
-     落在同一联合嵌入空间**（这是 M_inv=cos(v_txt,v_inv) 成立的前提）。
+Self-checking (`__main__`):
+  ① tokenize(”a photo of a dog”) → all word list ids < 49408;
+  ② Cross-modal image and text alignment: cosine similarity between a photo of a dog and ”a photo of a dog”
+     Significantly higher than the cosine similarity to ”a photo of a cat” - **Prove text tower and visual tower
+     Fall in the same joint embedding space** (this is the premise that M_inv=cos(v_txt,v_inv) holds).
 
-用法：
+Usage:
   from clip_text_cpu import CLIPTextCPU
   enc = CLIPTextCPU(weights_path, bpe_path)
-  feat = enc.encode_text(["a photo of a dog", ...])   # (N,512) L2 归一化
+  feat = enc.encode_text([”a photo of a dog”, ...]) # (N,512) L2 normalization
 """
 from __future__ import annotations
 
@@ -41,16 +41,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# CLIP 上下文长度与词表大小
+# CLIP context length and vocabulary size
 CONTEXT_LENGTH = 77
 
 
 # ======================================================================
-# 分词器（OpenAI CLIP SimpleTokenizer 的忠实实现）
+# Tokenizer (faithful implementation of OpenAI CLIP SimpleTokenizer)
 # ======================================================================
 @lru_cache()
 def bytes_to_unicode():
-    """可逆字节 → 可打印 Unicode 映射（CLIP 原版）。"""
+    """Reversible byte → printable Unicode mapping (CLIP original)."""
     bs = (list(range(ord("!"), ord("~") + 1))
           + list(range(ord("\xa1"), ord("\xac") + 1))
           + list(range(ord("\xae"), ord("\xff") + 1)))
@@ -65,7 +65,7 @@ def bytes_to_unicode():
 
 
 def get_pairs(word):
-    """返回相邻符号对集合。"""
+    """Returns a set of adjacent symbol pairs."""
     pairs = set()
     prev = word[0]
     for ch in word[1:]:
@@ -75,7 +75,7 @@ def get_pairs(word):
 
 
 def basic_clean(text: str) -> str:
-    """ftfy 修复 + 去 HTML 标签 + 空白归一。"""
+    """ftfy fix + remove HTML tags + whitespace normalization."""
     import ftfy
     text = ftfy.fix_text(text)
     text = html.unescape(html.unescape(text))
@@ -87,7 +87,7 @@ def whitespace_clean(text: str) -> str:
 
 
 class SimpleTokenizer:
-    """CLIP 的 BPE 分词器（与官方 clip.simple_tokenizer.SimpleTokenizer 一致）。"""
+    """CLIP’s BPE tokenizer (consistent with the official clip.simple_tokenizer.SimpleTokenizer)."""
 
     def __init__(self, bpe_path: str):
         import regex as re
@@ -166,7 +166,7 @@ class SimpleTokenizer:
 
 
 # ======================================================================
-# 文本塔（与视觉塔共用 ResidualAttentionBlock / QuickGELU 结构）
+# Text tower (shares the ResidualAttentionBlock / QuickGELU structure with the visual tower)
 # ======================================================================
 class TextTransformer(nn.Module):
     def __init__(self, context_length=77, vocab_size=49408, width=512,
@@ -187,17 +187,17 @@ class TextTransformer(nn.Module):
 
     @staticmethod
     def build_attention_mask(context_length: int) -> torch.Tensor:
-        """CLIP 的因果掩码：上三角为 −inf。"""
+        """Causal mask for CLIP: upper triangle is −inf."""
         mask = torch.empty(context_length, context_length)
         mask.fill_(float("-inf"))
         mask.triu_(1)
         return mask
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """x: (N, L) int64 token ids → (N, output_dim)。
+        """x: (N, L) int64 token ids → (N, output_dim).
 
-        EOT 位置 = token id 的 argmax（因 EOT=49407 为全表最大 id，
-        与 CLIP 官方 `text.argmax(dim=-1)` 口径一致；**不可**用嵌入的 argmax）。
+        EOT position = argmax of token id (because EOT=49407 is the maximum id in the entire table,
+        Consistent with CLIP’s official `text.argmax(dim=-1)` caliber; embedded argmax cannot be used).
         """
         eot_pos = x.argmax(dim=-1)                                # (N,)
         x = self.token_embedding(x) + self.positional_embedding
@@ -211,7 +211,7 @@ class TextTransformer(nn.Module):
 
 
 class _TextBlock(nn.Module):
-    """文本塔的残差块。键名须与 CLIP 一致：attn.in_proj_* / mlp.c_fc / mlp.c_proj。"""
+    """Residual block of text tower. The key name must be consistent with CLIP: attn.in_proj_* / mlp.c_fc / mlp.c_proj."""
 
     def __init__(self, d_model: int, n_head: int):
         super().__init__()
@@ -226,9 +226,9 @@ class _TextBlock(nn.Module):
         self.ln_2 = nn.LayerNorm(d_model)
 
     def attention(self, x: torch.Tensor, attn_mask: torch.Tensor) -> torch.Tensor:
-        """⚠️ attn_mask 必须真正传入 MHA：CLIP 文本塔依赖因果遮罩，
-        否则每个位置都能看到后续 token，EOT 池化会退化（实测相似度全为 1.000）。
-        mask 需按 batch 维复制并 reshape 为 (N*num_heads, L, L) 逐元素广播。
+        """⚠️ attn_mask must actually be passed into MHA: CLIP text tower relies on causal masks,
+        Otherwise, subsequent tokens can be seen at every position, and EOT pooling will degrade (the measured similarities are all 1.000).
+        The mask needs to be copied in batch dimensions and reshaped to (N*num_heads, L, L) and broadcast element by element.
         """
         n, L = x.shape[1], attn_mask.shape[0]
         h = self.attn.num_heads
@@ -247,10 +247,10 @@ class _QuickGELU(nn.Module):
 
 
 # ======================================================================
-# 对外接口
+#External interface
 # ======================================================================
 class CLIPTextCPU:
-    """从 OpenAI JIT 存档重建的 CLIP ViT-B/32 文本塔（CPU）。"""
+    """CLIP ViT-B/32 text tower (CPU) reconstructed from OpenAI JIT archive."""
 
     def __init__(self, weights_path: str, bpe_path: str, verbose: bool = False):
         warnings.filterwarnings("ignore")
@@ -267,13 +267,13 @@ class CLIPTextCPU:
                        "ln_final.weight", "ln_final.bias", "text_projection"):
                 sub[k] = v.float().clone()
         missing, unexpected = self.transformer.load_state_dict(sub, strict=False)
-        # attn_mask 是 buffer(persistent=False)，不在 missing 中
+        # attn_mask is buffer(persistent=False), not in missing
         missing = [m for m in missing if not m.endswith("attn_mask")]
         if verbose:
-            print(f"[clip_text] 注入文本塔权重 {len(sub)} 项；"
+            print(f"[clip_text] Inject text tower weight {len(sub)} item;"
                   f"missing={missing} unexpected={unexpected}")
         if missing:
-            raise RuntimeError(f"CLIP 文本塔权重缺失: {missing}")
+            raise RuntimeError(f"CLIP Text tower weight missing: {missing}")
 
         self.transformer.eval()
         for p in self.transformer.parameters():
@@ -281,17 +281,17 @@ class CLIPTextCPU:
 
         self.tokenizer = SimpleTokenizer(bpe_path)
         if self.tokenizer.vocab_size != 49408:
-            raise RuntimeError(f"词表大小异常: {self.tokenizer.vocab_size}（应为 49408）")
+            raise RuntimeError(f"Abnormal vocabulary size: {self.tokenizer.vocab_size} (should be 49408)")
         self.logit_scale = float(sd.get("logit_scale", torch.tensor(1.0)).float().item())
 
     def tokenize(self, texts: Sequence[str], context_length: int = CONTEXT_LENGTH) -> torch.Tensor:
-        """→ (N, context_length) int64，SOT/…/EOT 填充。"""
+        """→ (N, context_length) int64, SOT/…/EOT padding."""
         if isinstance(texts, str):
             texts = [texts]
         out = torch.zeros(len(texts), context_length, dtype=torch.long)
         for i, t in enumerate(texts):
             tokens = [self.tokenizer.sot] + self.tokenizer.encode(t) + [self.tokenizer.eot]
-            if len(tokens) > context_length:                      # 截断：保 SOT 与 EOT
+            if len(tokens) > context_length:                      # Truncate: Keep SOT and EOT
                 tokens = tokens[:context_length - 1] + [self.tokenizer.eot]
             out[i, :len(tokens)] = torch.tensor(tokens, dtype=torch.long)
         return out
@@ -303,7 +303,7 @@ class CLIPTextCPU:
     @torch.no_grad()
     def encode_text(self, texts: Sequence[str], batch_size: int = 64,
                     normalize: bool = True) -> torch.Tensor:
-        """→ (N,512)。normalize=True 时 L2 归一化（CLIP 官方默认行为）。"""
+        """→ (N,512). L2 normalization when normalize=True (CLIP official default behavior)."""
         ids = self.tokenize(texts)
         outs: List[torch.Tensor] = []
         for i in range(0, ids.shape[0], batch_size):
@@ -323,35 +323,35 @@ if __name__ == "__main__":
     enc = CLIPTextCPU(W, B, verbose=True)
     print("logit_scale =", round(enc.logit_scale, 4))
 
-    # ① 分词器自检
+    # ① Word segmenter self-test
     ids = enc.tokenize(["a photo of a dog", "a photo of a cat"])
     print("token ids:\n", ids.numpy())
-    assert int(ids.max()) < 49408, "词表越界"
-    print("[OK] 分词器：id 全在 [0, 49408) 内；SOT=%d EOT=%d"
+    assert int(ids.max()) < 49408, "Vocabulary out of bounds"
+    print("[OK] Tokenizer: id All in [0, 49408) within; SOT=%d EOT=%d"
           % (enc.tokenizer.sot, enc.tokenizer.eot))
 
-    # 已知 CLIP 标准分词结果（官方 clip/bpe_simple_vocab_16e6.txt.gz + ViT-B/32）
+    # Known CLIP standard word segmentation results (official clip/bpe_simple_vocab_16e6.txt.gz + ViT-B/32)
     #   "a photo of a dog" → [49406, 320, 1125, 539, 320, 1929, 49407]
     ref = [49406, 320, 1125, 539, 320, 1929, 49407]
     got = enc.tokenize(["a photo of a dog"])[0][:7].tolist()
-    print("[%s] 与官方参考分词一致: ref=%s got=%s"
+    print("[%s] Consistent with the official reference participle: ref=%s got=%s"
           % ("OK" if got == ref else "MISMATCH", ref, got))
 
-    # ② 跨模态对齐自检（证明文本塔与视觉塔共享嵌入空间）
+    # ② Cross-modal alignment self-test (prove that the text tower and the visual tower share the embedding space)
     try:
         from clip_cpu import CLIPVisionCPU
         from PIL import Image
         v = CLIPVisionCPU(W)
         rng = np.random.default_rng(0)
-        # 用纯色图无法验证语义，改用真实特征做一致性检查：
-        # 同一批文本编码应稳定；不同文本应彼此不同
+        # Semantics cannot be verified using solid color images, so use real features for consistency check:
+        # The encoding of the same batch of text should be stable; different texts should be different from each other
         f = enc.encode_text(["a photo of a dog", "a photo of a cat",
                              "a photo of a car", "on", "has", "in"])
         sim = f @ f.t()
-        print("文本-文本相似度矩阵:\n", np.round(sim.numpy(), 3))
+        print("text-text similarity matrix:\n", np.round(sim.numpy(), 3))
         diag_off = sim - torch.eye(6)
-        print("[OK] 对角线最大 %.3f，非对角最大 %.3f"
+        print("[OK] The largest diagonal %.3f, Off-diagonal maximum %.3f"
               % (float(sim.diag().max()), float(diag_off.max())))
-        print("[OK] 文本塔重建完成，输出", tuple(f.shape))
+        print("[OK] The text tower reconstruction is completed and output", tuple(f.shape))
     except ImportError:
-        print("[WARN] 未找到 clip_cpu，跳过跨模态检查")
+        print("[WARN] not found clip_cpu, Skip cross-modal checks")

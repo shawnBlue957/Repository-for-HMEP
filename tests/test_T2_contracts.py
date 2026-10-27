@@ -1,6 +1,6 @@
-"""T2 相邻对连通测试（模块设计文档 §4.2）——契约矩阵 C01–C24。
+"""T2 Neighbor Pair Connectivity Test (Module Design Document §4.2) – Contract Matrix C01–C24.
 
-核心不是"每个模块单独正确"，而是**模块之间的连接不产生静默错误**。
+The core is not that ”each module is correct individually”, but that connections between modules do not produce silent errors.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from vrp.guards import hinge_trigger_rate
 
 @pytest.fixture
 def wire(hp_tiny):
-    """一次性算好主路中间量，供各契约复用。"""
+    """Calculate the main road intermediate amount at one time for reuse by each contract."""
     model = build_model(hp_tiny)
     b = make_batch(hp_tiny)
     z_j, A, h = model.backbone.encode(b["x"], b["masks"])
@@ -47,7 +47,7 @@ def test_C02_M12_to_M13(wire, hp_tiny):
 
 
 def test_C03_M12_to_M412_image_level(wire, hp_tiny):
-    """z_0 必须为图像级 (b,d)，无配对维 —— 禁止隐式广播。"""
+    """z_0 must be image level (b,d), no paired dimensions - implicit broadcasting is prohibited."""
     z0 = wire["Z"][:, 0]
     assert z0.dim() == 2 and z0.shape == (wire["b"]["b"], hp_tiny.D)
     assert float(pi_loss(z0, [z0])) == 0.0
@@ -68,7 +68,7 @@ def test_C06_M14_to_M47_alpha_beta(wire, hp_tiny):
 
 
 def test_C07_M15_to_M42_r_imp_pair_sensitive(wire):
-    """r_imp 必须配对相关（H2 前置）；否则 L_dag ≡ 0。"""
+    """r_imp must be pairwise dependent (H2 prepended); otherwise L_dag ≡ 0."""
     imp = wire["model"].backbone.implicit
     a = imp(wire["pf"].f_s2, wire["pf"].f_u2, wire["pf"].f_o2)
     b = imp(wire["pf"].f_o2, wire["pf"].f_u2, wire["pf"].f_s2)
@@ -134,9 +134,9 @@ def test_C16_M34_to_M35_M410(wire, hp_tiny):
 
 
 def test_C17_M35_to_M43_not_to_M41(wire, hp_tiny):
-    """ω_p 门控只作用于分类损失（式22 作用域）。
+    """ω_p gating only acts on classification loss (scope of Equation 22).
 
-    ⚠️ 2026-10-18：式11 KL 蒸馏已删除，ω_p 现仅作为 p̃ 混合系数。
+    ⚠️ 2026-10-18: The KL distillation in Equation 11 has been deleted, and ω_p is now only used as the p̃ mixing coefficient.
     """
     K = hp_tiny.K
     assert wire["p_ij"].shape == (wire["b"]["b"], wire["b"]["P"], K)
@@ -168,7 +168,7 @@ def test_C20_M48_M49_to_M413(hp_tiny):
 def test_C21_all_losses_to_M413(hp_tiny):
     from vrp.config import all_lambda_dict
     from vrp.losses import total_loss
-    # ⚠️ 2026-10-18：式11 "KL" 与式12 "feat" 已删除（本文不含知识蒸馏）
+    # ⚠️ 2026-10-18: Formula 11 ”KL” and Formula 12 ”feat” have been deleted (this article does not contain knowledge distillation)
     keys = ["cls", "inv", "dag_non_sym", "sym", "coh", "hom", "spread", "PI", "ord"]
     parts = {k: torch.tensor(0.01) for k in keys}
     out = total_loss(parts, all_lambda_dict(hp_tiny, 0.2), expect_keys=keys)
@@ -182,17 +182,17 @@ def test_C23_theta_to_M48_M49(wire):
 
 
 def test_C24_swap_to_M45_M46(wire):
-    """swap 路输出必须与主路 p_ij 显著不同（否则 L_dag 无信号）。"""
+    """The swap path output must be significantly different from the main path p_ij (otherwise L_dag has no signal)."""
     from vrp.losses import js_divergence
     p_ji_pi, p_ij_pi = wire["model"].dual_head(wire["pf"].f_o2, wire["pf"].f_u2, wire["pf"].f_s2)
     d = float(js_divergence(p_ji_pi, wire["p_ij"]).mean())
-    assert d > 0, f"swap 路与主路输出无差异（JS={d}）⟹ L_dag 恒为 0"
+    assert d > 0, f"swap There is no difference between the output of the channel and the main channel. (JS={d})⟹ L_dag Hengwei 0"
 
 
-# ---------------------------------------------------------------- T2 六项专项
+#---------------------------------------------------------------- T2 six special events
 
 def test_T2a_hinge_input_is_Vr(hp_tiny):
-    """T2-a：用 V_global 冒充 V_r 必须抛异常（拦截 C1）。"""
+    """T2-a: Using V_global to impersonate V_r must throw an exception (interception C1)."""
     from vrp.guards import HingePositionError, assert_hinge_on_Vr
     with pytest.raises(HingePositionError):
         assert_hinge_on_Vr("V_global")
@@ -219,14 +219,14 @@ def test_T2d_alpha_beta_direction_sensitive(wire):
 
 
 def test_T2e_ptilde_not_into_cls(hp_tiny):
-    """T2-e：p̃ 与 L_cls 之间不得存在计算图路径。"""
+    """T2-e: There must be no computational graph path between p̃ and L_cls."""
     K = hp_tiny.K
     p = torch.softmax(torch.randn(2, 3, K), dim=-1).requires_grad_(True)
     from vrp.closure import ClosureParams, two_hop_neighborhood, mixed_student
     _, p_conv = ClosureParams(K)()
     P2 = two_hop_neighborhood(p_conv, 1.0)
     pt = mixed_student(p, P2, 0.2)
-    # L_cls 用 p（不是 pt）；pt 的梯度回传到 p 但不构成 p → L_cls 的路径
+    # L_cls uses p (not pt); the gradient of pt is returned to p but does not constitute the path of p → L_cls
     y = torch.nn.functional.one_hot(torch.randint(0, K, (2, 3)), K).float()
     L = cls_loss(p, p, y, torch.zeros_like(y), torch.ones(2, 3, 1), torch.ones(2, 3))
     g = torch.autograd.grad(L, p, retain_graph=True)[0]
@@ -235,11 +235,11 @@ def test_T2e_ptilde_not_into_cls(hp_tiny):
 
 
 def test_T2f_lcls_counted_once(hp_tiny):
-    """T2-f：L_cls 作为叶子被引用次数 ≡ 1（拦截 L5 双重计数）。"""
+    """T2-f: L_cls is referenced as a leaf ≡ 1 (intercepting L5 double count)."""
     from vrp.config import all_lambda_dict
     from vrp.losses import total_loss
     L_cls = torch.tensor(2.0, requires_grad=True)
     parts = {"cls": L_cls, "inv": torch.tensor(1.0)}
     lam = {"cls": 1.0, "inv": 0.5}
     out = total_loss(parts, lam)
-    assert float(out) == pytest.approx(2.5, abs=1e-6), "L_cls 必须恰好计一次"
+    assert float(out) == pytest.approx(2.5, abs=1e-6), "L_cls Must be counted exactly once"

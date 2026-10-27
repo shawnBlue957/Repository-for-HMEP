@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""跨机器路径解析（本机 Windows ↔ 腾讯云服务器）。
+"""Cross-machine path resolution (native Windows ↔ Tencent Cloud Server).
 
-背景：多个脚本原先**硬编码 Windows 路径**（`<USER_HOME>`、
+Background: Several scripts originally had hard-coded Windows paths (`<USER_HOME>`,
 `<PROJECT_ROOT>
-`ValueError: The provided filename ... does not exist`。
+`ValueError: The provided filename ... does not exist`.
 
-统一规则（按优先级）：
-  1. 显式环境变量：`CLIP_WEIGHTS` / `CLIP_BPE` / `VG_DATA_ROOT`
-  2. 由 `VG_DATA_ROOT` 推导（`$VG_DATA_ROOT/clip/...`）
-  3. 仓库内相对路径（`<项目>/code/..` 下的 `data/clip/...`）
-  4. 本机默认硬编码路径（兜底）
+Unified rules (by priority):
+  1. Explicit environment variables: `CLIP_WEIGHTS` / `CLIP_BPE` / `VG_DATA_ROOT`
+  2. Deduced from `VG_DATA_ROOT` (`$VG_DATA_ROOT/clip/...`)
+  3. Relative path in the repository (`data/clip/...` under `<project>/code/..`)
+  4. The default hard-coded path of this machine (the bottom line)
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ _WIN_DATA = (r"/path/to/vg_data")
 
 
 def data_root() -> str:
-    """数据根：优先环境变量，其次仓库内 `../data`，最后本机默认。"""
+    """Data root: environment variables first, then `../data` in the repository, and finally the local default."""
     v = os.environ.get("VG_DATA_ROOT")
     if v:
         return v
@@ -59,13 +59,13 @@ def clip_bpe() -> str:
 
 
 def _torch_loadable(path: str) -> bool:
-    """验证该权重能否被 `torch.load(weights_only=False)` 读出。
+    """Verify that the weights can be read by `torch.load(weights_only=False)`.
 
-    ⚠️ 必要性（实测踩坑）：`faster_rcnn_vg_r101c4.pkl` 虽名为 .pkl，实际是从 Caffe
-    转换而来的权重，**`torch.load` 会报 `RuntimeError: Invalid magic number; corrupt file?`**
-    （torch 误走 legacy 反序列化分支）。而 `artifacts/det_vg_resnext101.pth`
-    才是已转成 torch zip 序列化、可正常加载的版本（实测能读出 OrderedDict，
-    键为 `backbone.body.0.weight` 等）。
+    ⚠️ Necessity (actual test pitfall): `faster_rcnn_vg_r101c4.pkl` Although named .pkl, it is actually from Caffe
+    Converted weights, **`torch.load` will report `RuntimeError: Invalid magic number; corrupt file?`**
+    (torch mistakenly took the legacy deserialization branch). And `artifacts/det_vg_resnext101.pth`
+    is the version that has been converted to torch zip serialization and can be loaded normally (the actual test can read OrderedDict,
+    The keys are `backbone.body.0.weight` etc.).
     """
     if not path or not os.path.exists(path):
         return False
@@ -80,19 +80,19 @@ def _torch_loadable(path: str) -> bool:
 
 
 def vg_detector_ckpt() -> str:
-    """在 Visual Genome 上训练的检测器权重（Anderson et al. bottom-up-attention）。
+    """Detector weights trained on Visual Genome (Anderson et al. bottom-up-attention).
 
-    优先环境变量 `VG_DETECTOR_CKPT`；否则按「**可被 torch.load 成功**」筛选：
-      1. `artifacts/det_vg_resnext101.pth`（已转 torch 序列化，**首选**）
-      2. `detectors/faster_rcnn_vg_r101c4.pkl`（Caffe 原件，torch.load 会失败）
-      3. 其它候选
+    Prioritize the environment variable `VG_DETECTOR_CKPT`; otherwise filter by ”**can be torch.loaded successfully**”:
+      1. `artifacts/det_vg_resnext101.pth` (converted to torch serialization, **preferred**)
+      2. `detectors/faster_rcnn_vg_r101c4.pkl` (Caffe original, torch.load will fail)
+      3. Other candidates
     """
     v = os.environ.get("VG_DETECTOR_CKPT")
     if v and _torch_loadable(v):
         return v
 
-    # ⚠️ 候选路径须覆盖**代码目录下的 artifacts/**（det_vg_resnext101.pth 实际在此（_CODE/artifacts），
-    #   而非 data/artifacts/）。
+    # ⚠️ The candidate path must cover artifacts/** in the code directory (det_vg_resnext101.pth is actually here (_CODE/artifacts),
+    # instead of data/artifacts/).
     roots = [os.path.join(_CODE, "artifacts"), data_root(), os.path.join(_PROJ, "data")]
     rels = ["det_vg_resnext101.pth",
             "../artifacts/det_vg_resnext101.pth",
@@ -103,14 +103,14 @@ def vg_detector_ckpt() -> str:
             cand = os.path.join(base, rel)
             if _torch_loadable(cand):
                 return cand
-    # 都不行时仍返回首选路径，让上层给出明确的 FileNotFoundError 提示
+    # If neither of them works, still return the preferred path and let the upper layer give a clear FileNotFoundError prompt.
     return os.path.join(data_root(), rels[0])
 
 
 def finetuned_detector(arch: str = "resnet50") -> str:
-    """我们自己在 VG 上微调出来的检测器权重。
+    """Detector weights fine-tuned by ourselves on VG.
 
-    命名约定：`artifacts/det_vg_<arch>.pth`，arch ∈ {resnet50, resnext101}。
+    Naming convention: `artifacts/det_vg_<arch>.pth`, arch ∈ {resnet50, resnext101}.
     """
     a = arch.replace("_vg", "")
     v = os.environ.get("VG_DET_FT_CKPT")

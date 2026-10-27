@@ -1,6 +1,6 @@
-"""范畴建模的视觉关系预测 —— 参考实现（对应《模块设计文档-代码实现前.md》）。
+"""Visual relationship prediction for category modeling - reference implementation (corresponding to ”Module Design Document-Before Code Implementation.md”).
 
-模块 ↔ 设计文档编号：
+Module ↔ Design document number:
   config      M0.1
   guards      M0.2 / M0.4
   backbone    M1.1–M1.7

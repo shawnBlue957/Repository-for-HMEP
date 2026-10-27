@@ -1,10 +1,10 @@
-"""统计「二跳成立时三跳为空」的真实比例，即复合表 ∅ 列的经验值。
+"""Statistics of the true proportion of ”when the second hop is established, the third hop is empty”, that is, the empirical value of column ∅ of the composite table.
 
-目的（对应 形式化-空hom与复合表吸收律 的 R1）：
-  当前 p_conv 每行归一到 K 个非空谓词，等价于假设 P(∅|二跳)=0。
-  本脚本直接数数据：A→B 与 B→C 都在 GT 时，(A,C) 有多大概率不是 GT。
+Purpose (corresponding to R1 of formalization-empty hom and composite table absorption law):
+  Currently, each row of p_conv is normalized to K non-empty predicates, which is equivalent to assuming that P(∅|two hops)=0.
+  This script directly counts the data: when A→B and B→C are both in GT, what is the probability that (A,C) is not GT.
 
-用法：python3 tools/count_twohop_empty.py
+Usage: python3 tools/count_twohop_empty.py
 """
 import json
 import sys
@@ -12,7 +12,7 @@ from collections import defaultdict
 
 
 def _norm(rec):
-    """统一成 (img_id, [(s,o)]) 列表。"""
+    """Unified into (img_id, [(s,o)]) list."""
     out = []
     if isinstance(rec, dict):
         rec = rec.get("data", [rec])
@@ -57,10 +57,10 @@ def count(imgs, name):
                     if (a, c) not in gt:
                         n_empty += 1
     rate = (n_empty / n2) if n2 else 0.0
-    print(f"[{name}] 二跳路径 {n2:,} 条，其中三跳为 ∅ 的 {n_empty:,} 条 "
-          f"⟹ P(∅|二跳) = {rate:.4f}（自环跳过 {n_same:,}）")
-    print(f"[{name}] 反之 P(非空|二跳) = {1-rate:.4f}，"
-          f"当前实现强制为 1.0000 ⟹ 偏差倍数 ≈ {1/max(1-rate,1e-9):.1f}×")
+    print(f"[{name}] Second hop path {n2:,} strips, three of which jump to ∅ of {n_empty:,} Article "
+          f"⟹ P(∅|second jump) = {rate:.4f} (Skip from loop {n_same:,}）")
+    print(f"[{name}] On the contrary P(Not empty|second jump) = {1-rate:.4f}，"
+          f"The current implementation forces 1.0000 ⟹ Deviation multiple ≈ {1/max(1-rate,1e-9):.1f}×")
     return rate
 
 
@@ -70,18 +70,18 @@ if __name__ == "__main__":
     try:
         d = json.load(open("<PROJECT_ROOT>/data/vg150/annotations_train.json"))
         imgs = _norm(d)
-        print(f"VG 训练图数 {len(imgs):,}")
+        print(f"VG Number of training images {len(imgs):,}")
         count(imgs, "VG-150")
     except Exception as e:                                    # noqa: BLE001
-        print("VG 跳过:", type(e).__name__, e)
+        print("VG skip:", type(e).__name__, e)
 
     print("-" * 78)
     # GQA
     try:
         d = json.load(open("<PROJECT_ROOT>/data/gqa/artifacts/gqa_train_triplets.json"))
         imgs = _norm(d)
-        print(f"GQA 训练图数 {len(imgs):,}")
+        print(f"GQA Number of training images {len(imgs):,}")
         count(imgs, "GQA")
     except Exception as e:                                    # noqa: BLE001
-        print("GQA 跳过:", type(e).__name__, e)
+        print("GQA skip:", type(e).__name__, e)
     print("=" * 78)

@@ -1,16 +1,16 @@
-"""从真实标注**数据驱动**导出逆谓词对合（替代手工语义配对）。
+"""Data-driven derivation of inverse predicate involutions from ground-truth annotations (replacing manual semantic pairing).
 
-## 为什么必须改成数据驱动（重要发现）
+## Why it is necessary to change to data-driven (important discovery)
 
-上一轮我手工按语义配对了 30 组逆谓词（`tools/inv_groups_full.py`），
-随后用 **VRD train 真实标注**逐组检验（`/tmp/_ck.py`），结果：
+In the last round, I manually matched 30 groups of inverse predicates semantically (`tools/inv_groups_full.py`),
+Then use **VRD train real annotation** group-by-group inspection (`/tmp/_ck.py`), the result is:
 
-    有命中 5 / 无命中 25
+    5 hits/25 no hits
 
-即**手工配的 30 组里只有 5 组在真实标注中站得住**，其余 25 组命中率 ≈ 0%。
-逐组实测（r → 候选逆 → 命中率 → Top3 真实反向）：
+That is to say, only 5 of the 30 manually matched groups can stand up in the real annotation, and the hit rate of the remaining 25 groups is ≈ 0%.
+Actual measurement group by group (r → candidate inverse → hit rate → Top3 true inverse):
 
-| r | 手工候选逆 | 命中率 | Top3 真实反向 |
+| r | Manual candidate inversion | Hit rate | Top3 true inversion |
 |---|---|---|---|
 | `above` | under | 10.6% | below(355), under(256), beneath(160) |
 | `behind` | in the front of | **19.1%** | in the front of(428) ✓ |
@@ -20,30 +20,30 @@
 | `wear` | attach to | 0.0% | on(580), near(16), cover(14) |
 | `in` | outside of | 0.0% | has(47), on(25), under(14) |
 
-**结论**：VRD 的反向标注**绝大多数根本不是该谓词的逻辑逆**（如 `wear` 的反向
-Top1 是 `on` 而非「被穿戴」；`hold` 的 Top1 是 `on`）。这与本项目此前实测的
-「反向标签与逆谓词表不一致 42.2%、该谓词本身无定义逆 57.5%」完全一致，
-说明**手工语义表与数据集标注习惯之间存在系统性鸿沟**。
+**Conclusion**: Most of the inverse annotations of VRD are not the logical inverse of the predicate at all (such as the inverse of `wear`
+Top1 is `on` rather than ”worn”; Top1 of `hold` is `on`). This is consistent with what was measured previously in this project.
+”The reverse label is inconsistent with the inverse predicate table 42.2% of the time, and the predicate itself has no defined inverse 57.5%” is completely consistent.
+This illustrates a systematic gap between manual semantic tables and dataset annotation habits.
 
-**⟹ 正确做法：让数据决定谁是逻辑逆。** 本模块按标注证据强度自动构造对合，
-并对无证据者走式(17) 的 `φ` 列出口（"r 无定义逆"），
-而不是退化为 `Inv(r)=r`（后者等价于要求对称，语义与「有逆」相反）。
+**⟹ Correct approach: Let the data decide who is the logical inverse. ** This module automatically constructs an involution according to the strength of the marked evidence.
+And list the exits for `φ` of formula (17) without evidence (”r has no defined inverse”),
+Rather than degenerating into `Inv(r)=r` (the latter is equivalent to requiring symmetry, and the semantics are opposite to ”having an inverse”).
 
-## 构造规则（全部可复算，无人工语义判断）
+## Construction rules (all recalculable, no manual semantic judgment)
 
-对每个谓词 r：
-1. 统计 train 中 (s, r, o) 出现时反向对 (o, r', s) 的共现分布 `rev[r]`；
-2. 取 `best = argmax_r' rev[r][r']`，`rate = rev[r][best] / n(r)`；
-3. **互反一致性检验**：仅当 `best(best) == r` **且** `rev[best][r] > 0` 时
-   接受配对——否则该「逆」是单向伪相关，不能进对合；
-4. 强度门槛 `MIN_RATE`（默认 0.05）：命中率低于此视为「无定义逆」⟹ 走 φ 出口；
-5. 频率门槛 `MIN_N`（默认 100）：样本太少不足以判定 ⟹ 走 φ 出口；
-6. 自反谓词（`best == r` 且自反占比高）⟹ 标记为**对称类**，交由式(24) `L_sym` 处理，
-   **不进对合**（对合要求 `r ≠ r'`）。
+For each predicate r:
+1. Count the co-occurrence distribution `rev[r]` of the reverse pair (o, r’, s) when (s, r, o) appears in train;
+2. Take `best = argmax_r’ rev[r][r’]`, `rate = rev[r][best] / n(r)`;
+3. **Reciprocal consistency test**: only when `best(best) == r` **and** `rev[best][r] > 0`
+   Accept the matching - otherwise the ”inverse” is a one-way pseudo-correlation and cannot be combined;
+4. Strength threshold `MIN_RATE` (default 0.05): Hit rate lower than this is regarded as ”undefined inverse” ⟹ Take the φ exit;
+5. Frequency threshold `MIN_N` (default 100): Too few samples are not enough to determine ⟹ Take the φ exit;
+6. Reflexive predicates (`best == r` and have a high reflexive proportion)⟹ are marked as **symmetry class** and are processed by Equation (24) `L_sym`,
+   **No involution** (involution requires `r ≠ r’`).
 
-**产出**：`{2-循环对列表, 对称类列表, 无定义逆列表}`，后者即 φ 的语义集合。
+**Output**: `{2-cyclic pair list, symmetry class list, undefined inverse list}`, the latter is the semantic set of φ.
 
-运行:
+Run:
     python tools/build_inv_pairs_from_data.py --dataset vrd
 """
 from __future__ import annotations
@@ -59,14 +59,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-MIN_RATE = 0.05      # 反向命中率门槛
-MIN_N = 100          # 谓词最少出现次数
+MIN_RATE = 0.05      # Reverse hit rate threshold
+MIN_N = 100          # Minimum number of occurrences of predicate
 
 
 def load_vg(split: int = 0):
-    """定位并读取 VG-SGG.h5。
+    """Locate and read VG-SGG.h5.
 
-    ⚠️ 路径同样需跨平台：数据在项目根的 `data/vg/`，服务器在 `~/vrp/data/vg/`。
+    ⚠️ The path also needs to be cross-platform: the data is in `data/vg/` at the project root, and the server is in `~/vrp/data/vg/`.
     """
     import h5py
     env = os.environ.get("VG_H5")
@@ -79,32 +79,32 @@ def load_vg(split: int = 0):
     ]
     path = next((c for c in cands if c and os.path.exists(c)), None)
     if path is None:
-        raise FileNotFoundError(f"未找到 VG-SGG.h5。已尝试：{cands}\n"
-                                f"请设环境变量 VG_H5 指向该文件")
+        raise FileNotFoundError(f"not found VG-SGG.h5.Tried:{cands}\n"
+                                f"Please set environment variables VG_H5 point to the file")
     d = json.load(open(os.path.join(os.path.dirname(path), "VG-SGG-dicts.json"),
                        encoding="utf-8"))
-    # dicts.json 的键顺序即 label/predicate 索引；去掉 background 占位
+    # The key order of dicts.json is the label/predicate index; remove the background placeholder
     labels = d["label_to_idx"]
     pmap = d["predicate_to_idx"]
-    # VG-SGG-dicts.json 的 *_to_idx 是 {名称: 索引} 字典，且 **索引从 1 开始**
-    # （0 号保留给 background，dict 里不存在）。
-    # 按索引值排序还原为 0-based 列表：索引 i → 列表第 i-1 位，
-    # 这样 predicates[0] == 'above'，与 semantic_path.pt 的 0-based 谓词表一致。
+    # *_to_idx of VG-SGG-dicts.json is a {name: index} dictionary, and **index starts from 1**
+    # (Number 0 is reserved for background and does not exist in dict).
+    # Sort by index value and restore to 0-based list: index i → i-1 of the list,
+    # This way predicates[0] == ’above’ is consistent with the 0-based predicate table of semantic_path.pt.
     by_idx = sorted(pmap.items(), key=lambda x: x[1])
-    assert by_idx[0][1] == 1, f"预期谓词索引从 1 开始，实得 {by_idx[0][1]}"
+    assert by_idx[0][1] == 1, f"Expected predicate index from 1 Start, get it right {by_idx[0][1]}"
     preds = [name for name, _ in by_idx]
-    print(f"数据文件: {path}")
+    print(f"data file: {path}")
     return path, labels, preds
 
 
 def load_vg_json(root: str = None, split: str = "train"):
-    """⚠️ 2026-10-18 新增：从 **JSON 标注**（vg150/annotations_*.json）读取 VG。
+    """⚠️ 2026-10-18 New: Read VG from **JSON annotations** (vg150/annotations_*.json).
 
-    背景：服务器上的 `VG-SGG.h5` 已不存在（数据改用 json 格式），
-    原 `load_vg()` 走 h5py 分支必然 FileNotFoundError。
-    json 版直接给出 `relations[*].predicate_name`，比 h5 的整数索引更直接。
+    Background: `VG-SGG.h5` on the server no longer exists (the data is in json format instead),
+    The original `load_vg()` will inevitably cause FileNotFoundError when taking the h5py branch.
+    The json version directly gives `relations[*].predicate_name`, which is more direct than the integer index of h5.
 
-    返回 (path, labels_dict, predicate_names)。
+    Return (path, labels_dict, predicate_names).
     """
     cands = [root] if root else []
     cands += [os.path.expanduser("~/vrp/data/vg150"),
@@ -114,37 +114,37 @@ def load_vg_json(root: str = None, split: str = "train"):
         os.path.join(c, f"annotations_{split}.json"))), None)
     if base is None:
         raise FileNotFoundError(
-            f"未找到 vg150/annotations_{split}.json。试过：{cands}")
+            f"not found vg150/annotations_{split}.json.Tried:{cands}")
     path = os.path.join(base, f"annotations_{split}.json")
     data = json.load(open(path, encoding="utf-8"))
-    # 谓词名表：按首次出现顺序，保持与 semantic_path.pt 一致的 0-based 序
+    # Predicate name list: in the order of first appearance, maintaining the same 0-based order as semantic_path.pt
     preds, seen = [], set()
     labels = {}
     for rec in data:
         for ob in rec.get("objects", []):
             ln = ob.get("label_name")
             if ln is not None and ln not in labels:
-                labels[ln] = len(labels) + 1     # 1-based，0 留给 background
+                labels[ln] = len(labels) + 1     # 1-based, 0 is left for background
         for rel in rec.get("relations", []):
             pn = rel.get("predicate_name")
             if pn is not None and pn not in seen:
                 seen.add(pn)
                 preds.append(pn)
-    print(f"数据文件: {path}  谓词数={len(preds)}  物体类={len(labels)}")
+    print(f"data file: {path}  Number of predicates={len(preds)}  object class={len(labels)}")
     return path, labels, preds
 
 
 def collect_reverse_vg_json(path: str, labels: dict, preds: list):
-    """⚠️ 2026-10-18：从 **json 标注**收集反向共现（对齐 h5 版语义）。
+    """⚠️ 2026-10-18: Collecting reverse co-occurrences from **json annotations** (aligned to h5 version semantics).
 
-    互反证据的定义（与 h5 版一致）：
-        对关系 (s, o, r)，若**同一对物体** (o, s) 上也标注了谓词 r'，
-        则 r' 是 r 的**反向候选**。rev[r][r'] = count(反向出现)。
-    这是「逻辑逆」最直接的标注证据（`on` 的反向是 `under`，而非任意共现）。
+    Definition of reciprocal evidence (consistent with h5 version):
+        For the relationship (s, o, r), if **the same pair of objects** (o, s) is also marked with the predicate r’,
+        Then r’ is the **reverse candidate** of r. rev[r][r’] = count (appears in reverse).
+    This is the most direct annotation evidence of ”logical inverse” (the reverse of `on` is `under`, rather than arbitrary co-occurrence).
 
-    返回 (tot, rev)：
-        tot[r]  = 谓词 r 的总出现次数
-        rev[r] = Counter{r': 次数}
+    Return (tot, rev):
+        tot[r] = total number of occurrences of predicate r
+        rev[r] = Counter{r’: times}
     """
     import collections
     p2i = {n: i for i, n in enumerate(preds)}
@@ -156,7 +156,7 @@ def collect_reverse_vg_json(path: str, labels: dict, preds: list):
         objs = rec.get("objects", [])
         n_obj = len(objs)
         rels = rec.get("relations", [])
-        # (subj,obj) → [谓词下标,...]
+        # (subj,obj) → [predicate subscript,...]
         pair = collections.defaultdict(list)
         for rel in rels:
             pn = rel.get("predicate_name")
@@ -179,13 +179,13 @@ def collect_reverse_vg_json(path: str, labels: dict, preds: list):
                 continue
             ri = p2i[pn]
             tot[ri] += 1
-            for rj in pair.get((oi, si), ()):      # 反向对上的谓词
+            for rj in pair.get((oi, si), ()):      # Predicate on reverse pair
                 rev[ri][rj] += 1
     return tot, rev
 
 
 def collect_reverse_vg(path: str, labels: dict, preds: dict, split: int):
-    """遍历 VG-SGG.h5 统计反向共现。split: 0=train, 1=val, 2=test"""
+    """Traverse VG-SGG.h5 to count reverse co-occurrences. split: 0=train, 1=val, 2=test"""
     import h5py
     import numpy as np
     f = h5py.File(path, "r")
@@ -207,30 +207,30 @@ def collect_reverse_vg(path: str, labels: dict, preds: dict, split: int):
         objs = i2b[i] + np.arange(i2lb[i] - i2b[i])
         rels = i2r[i] + np.arange(i2lr[i] - i2r[i])
         lab = {int(o): int(lb[o]) for o in objs}
-        # 反向索引：(subj,obj) -> [(pred, ...)]
+        # Reverse index: (subj,obj) -> [(pred, ...)]
         pair = collections.defaultdict(list)
         for r in rels:
             s, o = int(rr[r][0]), int(rr[r][1])
             if s in lab and o in lab:
-                pair[(s, o)].append(int(rl[r]))   # 保留 h5 原索引
+                pair[(s, o)].append(int(rl[r]))   # Keep h5 original index
         for r in rels:
             s, o = int(rr[r][0]), int(rr[r][1])
             if s not in lab or o not in lab:
                 continue
-            ri = int(rl[r]) - 1          # h5 谓词索引从 1 开始
+            ri = int(rl[r]) - 1          # h5 predicate index starts from 1
             tot[ri] += 1
             for pi in pair.get((o, s), ()):
-                rev[ri][pi - 1] += 1     # 同上
+                rev[ri][pi - 1] += 1     # Same as above
     f.close()
     return tot, rev
 
 
 def load_vrd(split: str = "train"):
-    """定位 VRD 标注。
+    """Position VRD callouts.
 
-    ⚠️ 路径基准：本文件在 `code/tools/` 下，但数据在**上一级**的 `data/vrd/`；
-    服务器上则在 `~/vrp/data/vrd/`。故按「候选列表」逐个探测，
-    并支持 `VRD_JSON_DIR` 环境变量覆盖。
+    ⚠️ Path benchmark: This file is under `code/tools/`, but the data is in the **upper level** `data/vrd/`;
+    On the server, it is in `~/vrp/data/vrd/`. Therefore, click on the ”candidate list” to detect one by one.
+    And supports `VRD_JSON_DIR` environment variable override.
     """
     env = os.environ.get("VRD_JSON_DIR")
     cands = [env] if env else []
@@ -246,11 +246,11 @@ def load_vrd(split: str = "train"):
             base = os.path.abspath(c); break
     if base is None:
         raise FileNotFoundError(
-            f"未找到 VRD 标注。已尝试：{cands}\n"
-            f"请设环境变量 VRD_JSON_DIR 指向含 predicates.json 的目录")
+            f"not found VRD Label. Tried:{cands}\n"
+            f"Please set environment variables VRD_JSON_DIR Point to include predicates.json directory")
     ann = json.load(open(os.path.join(base, f"annotations_{split}.json"), encoding="utf-8"))
     preds = json.load(open(os.path.join(base, "predicates.json"), encoding="utf-8"))
-    print(f"数据目录: {base}")
+    print(f"data directory: {base}")
     return ann, preds
 
 
@@ -278,19 +278,19 @@ def collect_reverse(ann) -> Tuple[collections.Counter, collections.defaultdict]:
 def build_involution(preds: List[str], tot, rev, *,
                      min_rate: float = MIN_RATE, min_n: int = MIN_N,
                      top_m: int = 3):
-    """按标注证据构造 (2-循环 ∪ 不动点) 的严格对合。
+    """Strict involution constructed from labeled evidence (2-cycle ∪ fixed point).
 
-    ⚠️ 互反检验的修正（实测驱动）：
-       VG 的 `above` 反向 Top1 是 `under`(279)，但 `under` 的反向 Top1 是 `on`(895)、
-       Top2 才是 `above`(279)。若要求「互为 Top1」，会把 `above↔under` 这类
-       **正确的空间逆关系**误判为单向伪相关而丢弃（实测 VG 只剩 1 对 has↔on）。
+    ⚠️ Correction of reciprocal test (actual measurement driver):
+       The reverse Top1 of `above` of VG is `under`(279), but the reverse Top1 of `under` is `on`(895),
+       Top2 is `above`(279). If ”each other’s Top1” is required, `above↔under` will be used
+       **Correct spatial inverse relationship** was misjudged as one-way pseudo-correlation and discarded (only 1 pair of has↔on is left in the measured VG).
 
-       故改为：**候选 r' 须出现在 r 的 Top-m 反向中，且 r 出现在 r' 的 Top-m 反向中**
-       （互为 Top-m 即接受），再按命中率择优。这样 above↔under 可保留，
-       而 `on→has` 这类动作伪相关因 `has` 的 Top-m 里没有 `on` 而被排除。
+       Therefore, it is changed to: **Candidate r’ must appear in the Top-m reverse of r, and r appears in the Top-m reverse of r’**
+       (Top-m means acceptance), and then choose the best one based on hit rate. In this way, above↔under can be retained,
+       The spurious correlation of actions such as `on→has` is eliminated because there is no `on` in the Top-m of `has`.
     """
     K = len(preds)
-    sigma = list(range(K))          # 默认不动点
+    sigma = list(range(K))          #Default fixed point
     sym, noinv, pairs = set(), set(), []
 
     for i, p in enumerate(preds):
@@ -301,9 +301,9 @@ def build_involution(preds: List[str], tot, rev, *,
         if not c:
             noinv.add(i); continue
 
-        # 候选：按命中率降序的 Top-m
+        # Candidates: Top-m in descending order of hit rate
         cands = [j for j, _ in c.most_common(top_m)]
-        # 对称类：Top1 是自身且自反占比达门槛
+        # Symmetry class: Top1 is itself and the reflexive proportion reaches the threshold
         if cands and cands[0] == i and c[i] / n >= min_rate:
             sym.add(i); continue
 
@@ -316,14 +316,14 @@ def build_involution(preds: List[str], tot, rev, *,
                 break
             cj = rev[j]
             tops_j = [x for x, _ in cj.most_common(top_m)]
-            if i in tops_j and cj[i] > 0:      # 互为 Top-m
+            if i in tops_j and cj[i] > 0:      # mutually Top-m
                 chosen = j
                 break
         if chosen is None:
             noinv.add(i); continue
         pairs.append((i, chosen))
 
-    # 只保留**互不相交**的 2-循环；冲突者退化为不动点（否则 σ² ≠ id）
+    # Only **mutually disjoint** 2-cycles are retained; the conflictors degenerate into fixed points (otherwise σ² ≠ id)
     used, cyc = set(), []
     for i, j in pairs:
         if i in used or j in used or i == j:
@@ -332,16 +332,16 @@ def build_involution(preds: List[str], tot, rev, *,
     for i, j in cyc:
         sigma[i], sigma[j] = j, i
 
-    # ⚠️ 2026-10-18 修复（A8 矛盾）：**去掉 noinv / sym 与 2-环的重叠**。
+    # ⚠️ 2026-10-18 Fix (A8 contradiction): **Remove overlap of noinv/sym with 2-ring**.
     #
-    # 成因：谓词 i 的**单向**命中率不足时会落入 noinv（走 φ 出口）；
-    #       但谓词 j 的**反向**检查可能仍把 i 选为伙伴 ⟹ i 同时出现在
-    #       「有互反证据（入 2-环）」与「无互反证据（走 φ 出口）」两个集合里。
-    #       实测 VG：`above` / `behind` / `on` 三个谓词同时出现在两处
-    #       （配对分别为 under↔above、in front of↔behind、has↔on）。
+    # Cause: When the **one-way** hit rate of predicate i is insufficient, it will fall into noinv (take the φ exit);
+    # But the **reverse** check of predicate j may still select i as a partner ⟹ i also appears in
+    # In the two sets ”with reciprocal evidence (enter 2-ring)” and ”without reciprocal evidence (take φ exit)”.
+    # Measured VG: `above` / `behind` / `on` three predicates appear in two places at the same time
+    # (The pairings are under↔above, in front of↔behind, and has↔on).
     #
-    # 语义上二者**互斥**：既然已确证互反（2-环），就不该再声称「无定义逆」。
-    # 故 2-环优先，从 noinv / sym 中剔除其成员。
+    # Semantically the two are **mutually exclusive**: Now that the reciprocity (2-ring) has been confirmed, we should no longer claim ”undefined inverse”.
+    # So 2-ring takes precedence and removes its members from noinv/sym.
     cyc_members = {i for i, _ in cyc} | {j for _, j in cyc}
     noinv -= cyc_members
     sym -= cyc_members
@@ -366,8 +366,8 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.dataset == "vg150":
-        # ⚠️ 2026-10-18：服务器上 VG-SGG.h5 已不存在（数据改用 json 格式），
-        #    故优先走 json 标注路径；仅当 json 不可用时才回退 h5。
+        # ⚠️ 2026-10-18: VG-SGG.h5 no longer exists on the server (the data uses json format instead),
+        # Therefore, the json annotation path is preferred; h5 will be returned only when json is unavailable.
         try:
             path, labels, preds = load_vg_json(split=args.split)
             tot, rev = collect_reverse_vg_json(path, labels, preds)
@@ -383,25 +383,25 @@ def main() -> int:
                                               min_rate=args.min_rate, min_n=args.min_n)
     K = len(preds)
 
-    # 验证对合
+    # Verify alignment
     import numpy as np
     J = np.asarray(sigma_to_matrix(sigma, K))
     adj = float(np.abs(J @ J - np.eye(K)).max())
 
-    print(f"\n数据驱动对合构造（{args.dataset} {args.split}）")
+    print(f"\n Data-driven involution construction ({args.dataset} {args.split}）")
     print("=" * 72)
-    print(f"谓词数 K={K}  min_rate={args.min_rate}  min_n={args.min_n}")
-    print(f"2-循环（互不相交）: {len(cyc)} 对，覆盖 {2*len(cyc)} 个谓词"
+    print(f"Number of predicates K={K}  min_rate={args.min_rate}  min_n={args.min_n}")
+    print(f"2-Loops (disjoint)): {len(cyc)} Yes, cover {2*len(cyc)} predicate"
           f"（{2*len(cyc)/K*100:.1f}%）")
     for i, j in cyc:
         ri = rev[i][j] / tot[i]
         rj = rev[j][i] / tot[j]
         print(f"    {preds[i]:<16s} ↔ {preds[j]:<16s} "
-              f"命中率 {ri*100:5.1f}% / {rj*100:5.1f}%")
-    print(f"对称类（走式24 L_sym，不进对合）: {len(sym)} 个 → "
+              f"hit rate {ri*100:5.1f}% / {rj*100:5.1f}%")
+    print(f"Symmetry type (walking type 24 L_sym, No involution): {len(sym)} a → "
           f"{[preds[i] for i in sorted(sym)][:12]}")
-    print(f"无定义逆（走式17 的 φ 出口）: {len(noinv)} 个（占 {len(noinv)/K*100:.1f}%）")
-    print(f"J²−I 偏差 = {adj:.2e}  {'✅ 严格对合' if adj < 1e-9 else '❌'}")
+    print(f"Undefined inverse (moving form 17 of φ export): {len(noinv)} (accounting for {len(noinv)/K*100:.1f}%）")
+    print(f"J²−I Deviation = {adj:.2e}  {'✅ strict involution' if adj < 1e-9 else '❌'}")
     print("=" * 72)
 
     os.makedirs(os.path.dirname(args.out) if args.out else
@@ -417,7 +417,7 @@ def main() -> int:
             "min_rate": args.min_rate, "min_n": args.min_n, "split": args.split,
             "adj_err": adj,
         }, f, ensure_ascii=False, indent=2)
-    print(f"已写入 {out}")
+    print(f"has been written {out}")
     return 0
 
 

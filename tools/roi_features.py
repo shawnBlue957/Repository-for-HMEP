@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Faster R-CNN 风格的 ROI 特征提取（对标 SOTA 骨干）。
+"""Faster R-CNN style ROI feature extraction (benchmarked against SOTA backbone).
 
-动机
+motivation
 ----
-原实现用 **CLIP 对物体框的裁剪编码** 作为 $x^v$。其结构性缺陷是
-**裁剪丢失两物体间的上下文与相对位置**，而 `on`/`in`/`above` 这类空间关系
-恰恰依赖二者的相对布局。SOTA（Neural Motifs / RePEAT / PE-Net / CAGE-SGG）
-统一使用 **Faster R-CNN 的 ROI 特征**：
-    骨干(ResNeXt-101-FPN) → MultiScaleRoIAlign → box_head(2×FC→1024)
+The original implementation uses **CLIP to encode the cropping of the object frame** as $x^v$. Its structural defects are
+**Cropping loses the context and relative position between two objects**, while `on`/`in`/`above` such spatial relationships
+It just depends on the relative layout of the two. SOTA (Neural Motifs/RePEAT/PE-Net/CAGE-SGG)
+Unified use of **Faster R-CNN’s ROI features**:
+    Backbone(ResNeXt-101-FPN) → MultiScaleRoIAlign → box_head(2×FC→1024)
 
-本模块支持两种实现：
-1. `resnext101`（**默认，推荐**）：用 torchvision 构件**自行拼装 ResNeXt-101-FPN**，
-   即 `resnext101_32x8d` 的 layer2/3/4 → FPN(256) → ROI-Align(7×7) → TwoMLPHead(1024)。
-   这是**与 SOTA 同构**的特征通路（骨干族一致）。
-2. `resnet50`：直接复用 torchvision 的 `fasterrcnn_resnet50_fpn` 内部 ROI 头（较轻、较快），
-   作对照用。
+This module supports two implementations:
+1. `resnext101` (**default, recommended**): Use the torchvision component** to assemble ResNeXt-101-FPN** by yourself,
+   That is, layer2/3/4 → FPN(256) → ROI-Align(7×7) → TwoMLLPead(1024) of `resnext101_32x8d`.
+   This is a characteristic pathway that is isomorphic to SOTA (consistent with the backbone family).
+2. `resnet50`: Directly reuse torchvision’s `fasterrcnn_resnet50_fpn` internal ROI header (lighter and faster),
+   For comparison purposes.
 
-⚠️ 与 SOTA 的剩余差异（**必须写进论文**）
+⚠️Remaining differences from SOTA (**must be included in the paper**)
 ------------------------------------------
-1. **预训练数据**：本模块用 **ImageNet**（ResNeXt-101）或 **COCO**（ResNet-50-FPN），
-   而 SOTA 用的是 **在 VG 上训练的检测器**。⟹ 这是「特征通路结构」的复现，
-   不是「检测器在 VG 上的适配质量」的复现。
-2. 512 维由**冻结正交矩阵**投影（与 CLIP 路径的"冻结特征"口径一致，
-   不引入可训练参数，保持参数量对比公平）。
-3. 使用 **GT 框**（PredCls 协议），故不含检测误差——与 SOTA 的 PredCls 一致。
+1. **Pre-training data**: This module uses **ImageNet** (ResNeXt-101) or **COCO** (ResNet-50-FPN),
+   SOTA uses detectors trained on VG. ⟹ This is a recurrence of the ”characteristic pathway structure”,
+   It is not a reproduction of the ”quality of detector adaptation on VG”.
+2. 512-dimensional projection by **frozen orthogonal matrix** (consistent with the ”frozen features” caliber of the CLIP path,
+   Do not introduce trainable parameters and keep the parameter amount comparison fair).
+3. Uses **GT box** (PredCls protocol), so there is no detection error - consistent with SOTA’s PredCls.
 
-产物格式与 `small_sample_experiment.extract_features` 的 CLIP 缓存**完全兼容**：
+The product format is fully compatible with the CLIP cache of `small_sample_experiment.extract_features`:
     `{image_id: {"v": (n,512) float32, "labels": [...], "boxes": [...], "W": W, "H": H}}`
 """
 from __future__ import annotations
@@ -40,13 +40,13 @@ import torch
 import torch.nn as nn
 
 OUT_DIM = 512
-BOX_HEAD_DIM = 1024          # 与 SOTA 的 box_head 输出维一致
+BOX_HEAD_DIM = 1024          # Consistent with SOTA’s box_head output dimension
 FPN_CH = 256
 ROI_SIZE = 7
 
 
 def _frozen_proj(in_dim: int, out_dim: int, device) -> torch.Tensor:
-    """冻结正交投影（列正交，保持内积结构）。"""
+    """Freeze orthographic projection (column orthogonal, inner product structure preserved)."""
     g = torch.Generator().manual_seed(20261017)
     Q, _ = torch.linalg.qr(torch.randn(in_dim, out_dim, generator=g))
     return Q.to(device)
@@ -54,24 +54,24 @@ def _frozen_proj(in_dim: int, out_dim: int, device) -> torch.Tensor:
 
 def build_detector(arch: str, num_classes: Optional[int] = None,
                    min_size: int = 800, max_size: int = 1333):
-    """构造 torchvision Faster R-CNN：**ROI 抽取与 VG 微调共用的唯一入口**。
+    """Construct torchvision Faster R-CNN: **The only entrance shared by ROI extraction and VG fine-tuning**.
 
-    必须是单一构造入口：否则 `finetune_detector_vg.py` 存下的 state_dict
-    与特征抽取时期望的键名/结构会对不上，权重灌不回来，且不一定报错。
+    It must be a single construction entry: otherwise the state_dict saved in `finetune_detector_vg.py`
+    It does not match the key name/structure expected during feature extraction, the weight cannot be transferred back, and an error may not be reported.
 
     arch
-      resnet50   : torchvision 原生 ResNet-50-FPN（COCO 预训练）
-      resnext101 : ResNeXt-101-32x8d(ImageNet) + FPN，**与 SOTA 同族**
+      resnet50: torchvision native ResNet-50-FPN (COCO pre-trained)
+      resnext101: ResNeXt-101-32x8d(ImageNet) + FPN, **Same family as SOTA**
     num_classes
-      给定则把分类头换成该类别数（VG-150 用 151 = 150 类 + 背景）。
-      ⚠️ torchvision **不允许**在带 `weights` 时传 `num_classes`
-      （会按 COCO 的 91 类校验并抛 ValueError），故先默认构建再换头。
+      If given, replace the classification header with the number of categories (VG-150 uses 151 = 150 categories + background).
+      ⚠️ torchvision **not allowed** to pass `num_classes` with `weights`
+      (It will be verified according to COCO’s 91 category and throw a ValueError), so build it by default first and then change the header.
     """
     from torchvision.models.detection import (
         FasterRCNN_ResNet50_FPN_Weights, fasterrcnn_resnet50_fpn)
 
     if arch not in ("resnet50", "resnext101"):
-        raise ValueError(f"未知 arch: {arch}")
+        raise ValueError(f"unknown arch: {arch}")
     det = fasterrcnn_resnet50_fpn(
         weights=FasterRCNN_ResNet50_FPN_Weights.COCO_V1,
         min_size=min_size, max_size=max_size)
@@ -85,16 +85,16 @@ def build_detector(arch: str, num_classes: Optional[int] = None,
         from torchvision.ops.feature_pyramid_network import LastLevelMaxPool
 
         m = resnext101_32x8d(weights=ResNeXt101_32X8D_Weights.IMAGENET1K_V2)
-        # children 顺序：conv1(0) bn1(1) relu(2) maxpool(3)
+        # children order: conv1(0) bn1(1) relu(2) maxpool(3)
         #              layer1(4) layer2(5) layer3(6) layer4(7) avgpool(8) fc(9)
-        # 截掉 avgpool/fc ⟹ Sequential 的命名子模块为 '0'..'7'
+        # Truncate avgpool/fc ⟹ The named submodule of Sequential is ’0’..’7’
         body = nn.Sequential(*list(m.children())[:-2])
-        # ⚠️ 必须与 torchvision 默认 ResNet-50-FPN **结构对齐**：取 layer1..layer4
-        # 四个特征层 + LastLevelMaxPool ⟹ 输出 '0','1','2','3','pool' 共 5 级，
-        # 才与 RPN 的 5 组锚点、以及 ROI 的 featmap_names=['0','1','2','3'] 一致。
-        # 若只映射 3 个特征层（曾踩过），锚点数与特征图数不匹配会直接
-        # 抛 "Anchors should be Tuple[Tuple[int]]..."。
-        #   ResNeXt-101 通道数：layer1=256, layer2=512, layer3=1024, layer4=2048
+        # ⚠️ Must be aligned with torchvision’s default ResNet-50-FPN **structure**: take layer1..layer4
+        # Four feature layers + LastLevelMaxPool ⟹ Output ’0’, ’1’, ’2’, ’3’, ’pool’, a total of 5 levels,
+        # It is consistent with the 5 sets of anchor points of RPN and the featmap_names=[’0’,’1’,’2’,’3’] of ROI.
+        # If only 3 feature layers (which have been stepped on) are mapped, the mismatch between the number of anchor points and the number of feature maps will directly
+        # Throw ”Anchors should be Tuple[Tuple[int]]...”.
+        # ResNeXt-101 channel number: layer1=256, layer2=512, layer3=1024, layer4=2048
         det.backbone = BackboneWithFPN(
             body, return_layers={"4": "0", "5": "1", "6": "2", "7": "3"},
             in_channels_list=[256, 512, 1024, 2048], out_channels=FPN_CH,
@@ -113,15 +113,15 @@ def build_detector(arch: str, num_classes: Optional[int] = None,
 
 
 class ROIHead(nn.Module):
-    """ROI-Align + 双 FC 头 + 冻结投影。"""
+    """ROI-Align + Dual FC Head + Freeze Projection."""
 
     def __init__(self, arch: str, out_dim: int = OUT_DIM, device=None):
         super().__init__()
         self.arch = arch
-        # `_vg` 后缀 = 加载我们自己在 VG 上微调过的权重
-        #（tools/finetune_detector_vg.py），其余部分与基座 arch 完全一致，
-        # 于是 `resnet50` vs `resnet50_vg`、`resnext101` vs `resnext101_vg`
-        # 构成「唯一变量 = 预训练数据」的配对消融。
+        # `_vg` suffix = load our own fine-tuned weights on VG
+        #(tools/finetune_detector_vg.py), the rest is exactly the same as the base arch,
+        # So `resnet50` vs `resnet50_vg`, `resnext101` vs `resnext101_vg`
+        #Constitute the paired ablation of ”unique variable = pre-training data”.
         det = build_detector(arch.replace("_vg", ""))
         self.backbone = det.backbone
         self.transform = det.transform
@@ -134,20 +134,20 @@ class ROIHead(nn.Module):
         self.proj = _frozen_proj(BOX_HEAD_DIM, out_dim, device)
 
     def _load_vg_finetuned(self, arch: str) -> None:
-        """灌入「在 VG 上微调过」的 backbone / ROI 头权重。
+        """Inject backbone/ROI header weights ”fine-tuned on VG”.
 
-        权重来自 `tools/finetune_detector_vg.py` 保存的**完整检测器** state_dict，
-        这里只取 ROI 特征通路需要的三部分：
+        The weights come from the **full detector** state_dict saved in `tools/finetune_detector_vg.py`,
+        Here we only take the three parts needed for the ROI feature channel:
             backbone.*            → self.backbone.*
             roi_heads.box_head.*  → self.box_head.*
-        （`box_roi_pool` 无可训练参数；分类头在 PredCls 下不使用。）
+        (`box_roi_pool` has no training parameters; the classification header is not used under PredCls.)
         """
         from _paths import finetuned_detector
         ck = os.environ.get("VG_DET_FT_CKPT") or finetuned_detector(arch)
         if not os.path.exists(ck):
             raise FileNotFoundError(
-                f"缺少 VG 微调权重：{ck}\n"
-                f"  先运行：python tools/finetune_detector_vg.py --arch {arch.replace('_vg','')}"
+                f"missing VG Fine-tune weights:{ck}\n"
+                f"  First run: python tools/finetune_detector_vg.py --arch {arch.replace('_vg','')}"
                 f" --epochs 1")
         sd = torch.load(ck, map_location="cpu", weights_only=False)
         tgt: Dict[str, torch.Tensor] = {}
@@ -159,29 +159,29 @@ class ROIHead(nn.Module):
             elif k.startswith("roi_heads.box_head."):
                 tgt["box_head." + k[len("roi_heads.box_head."):]] = v
         if not tgt:
-            raise RuntimeError(f"VG 权重里找不到 backbone/box_head：{list(sd)[:5]}")
+            raise RuntimeError(f"VG Can’t find it in weights backbone/box_head: {list(sd)[:5]}")
         missing, unexpected = self.load_state_dict(tgt, strict=False)
         crit = [m for m in missing
                 if m.startswith(("backbone.", "box_head.")) and "proj" not in m]
         if crit:
-            raise RuntimeError(f"VG 权重与 {arch} 结构不匹配，缺 {len(crit)} 项：{crit[:5]}")
-        print(f"[roi] arch={arch} 已载入 VG 微调权重 {os.path.basename(ck)}"
-              f"（{len(tgt)} 项）")
+            raise RuntimeError(f"VG weight vs. {arch} Structure does not match, missing {len(crit)} Item:{crit[:5]}")
+        print(f"[roi] arch={arch} Loaded VG Fine-tune weights {os.path.basename(ck)}"
+              f"（{len(tgt)} item)")
 
     @torch.no_grad()
     def forward(self, tensors: List[torch.Tensor],
                 boxes_list: Sequence[torch.Tensor], device,
                 amp: bool = True) -> List[torch.Tensor]:
         images, _ = self.transform(tensors, None)
-        # ⚠️ torchvision 的 transform 只做 resize/pad/normalize，**不搬设备**；
-        # 模型在 GPU 时若不搬会报
+        # ⚠️ torchvision’s transform only does resize/pad/normalize, **does not move the device**;
+        # If the model is not moved to the GPU, it will report
         # "Input type (torch.FloatTensor) and weight type (torch.cuda.FloatTensor)"
         images = images.to(device)
-        # ⚠️⚠️ 关键：`transform(images, targets=None)` **只缩放图像，不缩放框**
-        # （`_resize_boxes` 仅在 targets 非 None 时被调用）。而 ROI-Align 的特征图
-        # 来自**缩放后**的图像，所以必须把框按同一比例缩放。否则图像被放大 ~2×
-        # （短边 800）时，原图坐标的框只覆盖特征图左上角的一小块，
-        # 池化位置整体错位——但**不会报任何错**，只会让特征静默失效。
+        # ⚠️⚠️ Key: `transform(images, targets=None)` **Only scale the image, not the frame**
+        # (`_resize_boxes` is only called if targets is non-None). The feature map of ROI-Align
+        # From the **scaled** image, so the frame must be scaled by the same ratio. Otherwise the image is enlarged ~2×
+        # (short side 800), the frame of the original image coordinates only covers a small area in the upper left corner of the feature map.
+        # The overall pooling position is misaligned - but **no error** will be reported, it will only cause the feature to fail silently.
         bl = []
         for b, t, size in zip(boxes_list, tensors, images.image_sizes):
             bb = b.to(device).float()
@@ -194,9 +194,9 @@ class ROIHead(nn.Module):
             bb[:, 0::2] *= (nw / float(ow))
             bb[:, 1::2] *= (nh / float(oh))
             bl.append(bb)
-        # AMP：T4 上实测 1.27 → 5.16 图/s（4.06×），逐向量余弦最低 0.999894。
-        # 两个骨干统一开启，保证 R50 / RX101 的特征口径一致。
-        # ⚠️ 不要同时开 cudnn.benchmark：批内尺寸逐批变化会触发算法重搜索，反而慢 5×。
+        # AMP: Actual measurement on T4: 1.27 → 5.16 pictures/s (4.06×), vector-wise cosine is the lowest 0.999894.
+        # The two backbones are turned on uniformly to ensure that the characteristic calibers of R50 / RX101 are consistent.
+        # ⚠️ Do not open cudnn.benchmark at the same time: batch-by-batch size changes will trigger the algorithm to re-search, which will be 5× slower.
         with torch.autocast("cuda", dtype=torch.float16,
                             enabled=bool(amp and device.type == "cuda")):
             feats = self.backbone(images.tensors)
@@ -213,9 +213,9 @@ class ROIHead(nn.Module):
 
 
 class ROIEncoder:
-    """对外接口：一批 (PIL, boxes) → 每图 (N, out_dim)。
+    """External interface: batch (PIL, boxes) → each picture (N, out_dim).
 
-    可配置分辨率与 arch；OOM 时由调用方（`_enc_safe`）拆分。
+    Configurable resolution with arch; split by caller (`_enc_safe`) on OOM.
     """
 
     def __init__(self, arch: str = "resnext101", out_dim: int = OUT_DIM,
@@ -228,15 +228,15 @@ class ROIEncoder:
         for p in self.head.parameters():
             p.requires_grad_(False)
         self.head.proj = self.head.proj.to(self.device)
-        # 分辨率对两个 arch 都要可覆盖：resnet50 分支的 `det.transform` 是构造时
-        # 按 800/1333 固定的，若不重建则 `--roi-min-size` 静默失效。
+        # The resolution must be coverable for both arches: `det.transform` of the resnet50 branch is constructed
+        # Fixed by 800/1333, if not rebuilt, `--roi-min-size` will be silently disabled.
         if (min_size, max_size) != (800, 1333) or arch == "resnext101":
             self.head.transform = type(self.head.transform)(
                 min_size, max_size, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         if verbose:
             n = sum(p.numel() for p in self.head.parameters())
-            print(f"[roi] arch={arch} 加载完成，{n:,} 参数（冻结）；设备 {self.device}；"
-                  f"分辨率 {min_size}/{max_size}；投影 {BOX_HEAD_DIM}→{out_dim}；"
+            print(f"[roi] arch={arch} Loading completed,{n:,} Parameter (freeze); device {self.device}；"
+                  f"resolution {min_size}/{max_size}; projection {BOX_HEAD_DIM}→{out_dim}；"
                   f"AMP={'on' if self.amp else 'off'}")
 
     @torch.no_grad()
@@ -251,30 +251,30 @@ def extract_roi_features(records: List, imgzip, cache_path: str,
                          log=print, batch_imgs: int = 2,
                          min_size: int = 800, max_size: int = 1333,
                          arch: str = "resnext101", amp: bool = True) -> Dict[str, dict]:
-    """把 ROI 特征写入与 CLIP 缓存**同格式**的缓存文件（按块读图→编码→落盘）。
+    """Write the ROI features to a cache file in the same format as the CLIP cache (read images in blocks → encode → download).
 
-    ⚠️ **OOM 安全**：骨干在 800×1333 下按批 padding，显存随最大边长平方增长。
-    故 `batch_imgs` 默认 2，且 `_enc_safe` 在 OOM 时自动对半拆分直到单图。
+    ⚠️ **OOM security**: The backbone is padded in batches at 800×1333, and the video memory grows with the square of the maximum side length.
+    Therefore, `batch_imgs` defaults to 2, and `_enc_safe` automatically splits in half until a single image occurs when OOM occurs.
     """
     if os.path.exists(cache_path):
         t = time.time()
         cache = torch.load(cache_path, weights_only=False)
-        log(f"  载入 ROI 特征缓存 {os.path.basename(cache_path)}"
-            f"（{len(cache)} 图，{time.time()-t:.1f}s）")
+        log(f"  Load ROI feature cache {os.path.basename(cache_path)}"
+            f"（{len(cache)} Figure,{time.time()-t:.1f}s）")
         return cache
 
     from PIL import Image
     import io as _io
 
     if arch == "vg_r101c4":
-        # 在 Visual Genome 上训练的检测器（Anderson et al.），与 SOTA 同源预训练。
+        # Detector trained on Visual Genome (Anderson et al.), same as SOTA pre-trained.
         from vg_detector import VGDetectorEncoder
         from _paths import vg_detector_ckpt
         _ck = vg_detector_ckpt()
         if not os.path.exists(_ck):
             raise FileNotFoundError(
-                f"缺少 VG 检测器权重：{_ck}\n"
-                f"  下载：curl -L -o <目标> "
+                f"missing VG Detector weights:{_ck}\n"
+                f"  Download: curl -L -o <target> "
                 f"https://nlp.cs.unc.edu/models/faster_rcnn_from_caffe_attr_original.pkl")
         enc = VGDetectorEncoder(_ck, out_dim=OUT_DIM, device=None,
                                 min_size=min_size, max_size=max_size,
@@ -333,14 +333,14 @@ def extract_roi_features(records: List, imgzip, cache_path: str,
                 p.close()
         if time.time() - last_log > 20:
             done = min(b0 + batch_imgs, len(records))
-            log(f"    已处理 {done:,}/{len(records):,} 图 | {n_box:,} 框 | "
-                f"{done / max(time.time()-t0, 1e-6):.1f} 图/s | "
-                f"已用 {(time.time()-t0)/60:.1f} 分钟")
+            log(f"    Processed {done:,}/{len(records):,} Figure | {n_box:,} box | "
+                f"{done / max(time.time()-t0, 1e-6):.1f} Figure/s | "
+                f"Used {(time.time()-t0)/60:.1f} minutes")
             last_log = time.time()
 
-    log(f"  ROI 编码完成：{n_box:,} 框，用时 {(time.time()-t0)/60:.1f} 分钟（丢图 {miss_img}）")
+    log(f"  ROI Coding completed:{n_box:,} frame, time {(time.time()-t0)/60:.1f} minutes (dropped picture {miss_img}）")
     torch.save(cache, cache_path)
-    log(f"  ROI 特征提取完成：{len(cache)} 图 → {os.path.basename(cache_path)}")
+    log(f"  ROI Feature extraction is completed:{len(cache)} Figure → {os.path.basename(cache_path)}")
     return cache
 
 
@@ -353,5 +353,5 @@ if __name__ == "__main__":
     p = Image.new("RGB", (400, 300), (128, 128, 128))
     bx = torch.tensor([[10., 10., 200., 180.], [200., 100., 380., 280.]])
     f = enc.encode_batch([p], [bx])[0]
-    print("输出", tuple(f.shape), "期望 (2, 512)；范数",
+    print("output", tuple(f.shape), "Expectation (2, 512); norm",
           [round(float(v), 3) for v in f.norm(dim=-1)])

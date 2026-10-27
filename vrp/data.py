@@ -1,11 +1,11 @@
-"""真实数据加载：VG-150 / VRD（对应模块设计文档 M6.1 离线预计算）。
+"""Real data loading: VG-150/VRD (corresponding to module design document M6.1 offline precalculation).
 
-数据集位置（本机既有，勿重复下载）：
+Data set location (it already exists on this machine, do not download it again):
     <PROJECT_ROOT>
 
-VG-150 实测规模（check_report.json 全部 PASS）：
-    图像 108,073 | 物体类 150 | 谓词类 50 | 关系 622,705
-    划分 train 57,723 / val 5,000 / test 26,446
+VG-150 actual measured scale (check_report.json all PASS):
+    Images 108,073 | Object classes 150 | Predicate classes 50 | Relations 622,705
+    Divide train 57,723 / val 5,000 / test 26,446
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ DEFAULT_ROOT = (
 
 
 def dataset_root() -> str:
-    """数据根目录：优先环境变量 VG_DATA_ROOT，否则用本机既有路径。"""
+    """Data root directory: Prioritize the environment variable VG_DATA_ROOT, otherwise use the existing path of the local machine."""
     return os.environ.get("VG_DATA_ROOT", DEFAULT_ROOT)
 
 
@@ -30,7 +30,7 @@ def dataset_root() -> str:
 class RelationRecord:
     subject: int
     object: int
-    predicate: int          # 1..50（0 为 __background__）
+    predicate: int          # 1..50 (0 is __background__)
 
 
 @dataclass
@@ -45,15 +45,15 @@ class ImageRecord:
 
 
 class VG150:
-    """VG-150 标准 SGG 划分的只读加载器。"""
+    """VG-150 Read-only loader for standard SGG partitions."""
 
     def __init__(self, root: Optional[str] = None):
         self.root = os.path.join(root or dataset_root(), "vg150")
         dicts_path = os.path.join(self.root, "VG-SGG-dicts.json")
         with open(dicts_path, encoding="utf-8") as f:
             d = json.load(f)
-        self.object_classes: List[str] = d["object_classes"]        # 151（含 background）
-        self.predicate_classes: List[str] = d["predicate_classes"]  # 51（含 background）
+        self.object_classes: List[str] = d["object_classes"]        # 151 (including background)
+        self.predicate_classes: List[str] = d["predicate_classes"]  # 51 (including background)
         self.K = len(self.predicate_classes) - 1                    # 50
         self.num_objects = len(self.object_classes) - 1             # 150
 
@@ -84,7 +84,7 @@ class VG150:
             return json.load(f)
 
 
-# --------------------------------------------------------------- 结构 → 批张量
+# --------------------------------------------------------------- Structure → Batch Tensor
 
 def to_model_batch(
     images: Sequence[ImageRecord],
@@ -95,11 +95,11 @@ def to_model_batch(
     visual_features: Optional[Dict[str, torch.Tensor]] = None,
     seed: int = 0,
 ) -> Dict[str, torch.Tensor]:
-    """把标注记录转成模型所需的结构化批（配对级 s_idx/o_idx/y_label）。
+    """Convert label records into structured batches required by the model (pair-level s_idx/o_idx/y_label).
 
-    ⚠️ 本函数**只提供图结构**（主客体索引 + 谓词标签 + 层邻域掩码）。
-    视觉/文本模态特征 x 需由调用方提供（CLIP 编码），否则以固定种子占位，
-    仅用于**契约与一致性验证**，不可用于训练。
+    ⚠️ This function **only provides graph structure** (subject and object index + predicate label + layer neighborhood mask).
+    The visual/text modal feature x needs to be provided by the caller (CLIP encoding), otherwise it will be occupied by a fixed seed.
+    Only used for **contract and consistency verification**, not for training.
     """
     import torch.nn.functional as F
 
@@ -137,18 +137,18 @@ def to_model_batch(
             "y_label": y_label, "pair_mask": pair_mask, "N": Ns}
 
 
-# --------------------------------------------------------------- M2.5 / 式(16)
+# --------------------------------------------------------------- M2.5 / Formula (16)
 
 def converse_statistics(
     images: Sequence[ImageRecord], K: int = 50, K_plus: int = 51
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """从标注统计「逆关系」共现，供式(16) 的三组划分使用。
+    """The ”inverse relationship” co-occurrences are counted from the annotation and used for the three group divisions of Equation (16).
 
-    谓词索引为 1..K（0 为 __background__），返回时**重映射到 0..K−1**，
-    故输出形状为 (K, K) 与 (K,)，与模型的 K 一致。
+    The predicate index is 1..K (0 is __background__), and is remapped to 0..K−1** when returned,
+    Therefore, the output shapes are (K, K) and (K,), which are consistent with the K of the model.
 
-    ⟹ 这是**数据驱动的**分组依据（终稿 §3.3：分组必须由 VG 标注统计得出，
-       不是预先假定 —— 这本身是可发表的实证贡献）。
+    ⟹ This is a **data-driven** grouping basis (final draft §3.3: Grouping must be derived from VG annotation statistics,
+       is not presupposed – this is a publishable empirical contribution in itself).
     """
     counts = torch.zeros(K, K, dtype=torch.float64)
     pair_counts = torch.zeros(K, dtype=torch.float64)
@@ -166,20 +166,20 @@ def converse_statistics(
             if q is not None and 1 <= q <= K:
                 counts[pi, q - 1] += 1
                 n_rev += 1
-    converse_statistics.n_reverse_pairs = n_rev          # 供报告
+    converse_statistics.n_reverse_pairs = n_rev          # for reporting
     return counts.float(), pair_counts.float()
 
 
 def epsilon_assoc_from_images(
     images: Sequence[ImageRecord], K_plus: int = 51, max_len: Optional[int] = None
 ) -> torch.Tensor:
-    """从标注三元组构建 ε_assoc 的 51³ 查表（式30）。
+    """Construct a 51³ lookup table of ε_assoc from the labeled triples (Eq. 30).
 
-    对每张图，枚举关系对 (a→b, b→c)，若 (a→c) 也存在则记一条三元组
-    (r_ab, r_bc, r_ac)。返回 (K_plus,K_plus,K_plus) 的违反率表。
+    For each picture, enumerate the relationship pair (a→b, b→c). If (a→c) also exists, record a triplet.
+    (r_ab, r_bc, r_ac). Returns the violation rate table for (K_plus,K_plus,K_plus).
 
-    ⚠️ 终稿明示：ε_assoc 与训练无关，是**数据集的组合律违反率**（纯数据属性）；
-    若 ε_assoc 与 mR@50 无相关，则收益 B 不成立（可证伪）。
+    ⚠️ The final draft clearly states: ε_assoc has nothing to do with training, it is the combinatorial law violation rate of the data set (pure data attribute);
+    If ε_assoc is not related to mR@50, then the return B is not true (falsifiable).
     """
     from vrp.diagnostics import build_epsilon_assoc
 
@@ -191,7 +191,7 @@ def epsilon_assoc_from_images(
         for r in im.relations:
             if r.predicate < K_plus:
                 direct[(r.subject, r.object)] = r.predicate
-        # 显式两跳：(a,b) 与 (b,c) 同时存在 ⟹ 记三元组 (r_ab, r_bc, r_ac)
+        # Explicit two hops: (a,b) and (b,c) exist at the same time ⟹ Remember triplet (r_ab, r_bc, r_ac)
         for (a, b), rab in direct.items():
             for (b2, c), rbc in direct.items():
                 if b2 != b or a == c:
@@ -212,29 +212,29 @@ def split_converse_stats(
     sym_ratio: float = 0.20,
     ambig_ratio: float = 0.05,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, object]]:
-    """式(16)：由逆关系共现统计得 ρ̂ 与三组划分 + 可信度权重。
+    """Equation (16): ρ̂ and three group divisions + credibility weight are obtained from the inverse relationship co-occurrence statistics.
 
-    ⚠️ **实测发现（本项目在 VG-150 val 上验证）**：VG-150 的标注**极少给出同一
-    有序对的反向关系** —— 1,500 张图中 7,494 条关系里仅有 492 条存在逆向配对
-    （6.6%）。因此若按「同一对的双向共现」定义 ρ̂，统计量极度稀疏
-    （最大亲和度 0.286、均值 0.002），低支持度谓词会被小样本噪声主导。
+    ⚠️ **Actual measurement found (this project was verified on VG-150 val)**: The label** of VG-150 rarely gives the same
+    Inverse relationships of ordered pairs** - only 492 out of 7,494 relationships in 1,500 images have inverse pairs
+    (6.6%). Therefore, if ρ̂ is defined according to ”two-way co-occurrence of the same pair”, the statistics will be extremely sparse.
+    (Max affinity 0.286, mean 0.002), low support predicates will be dominated by small sample noise.
 
-    ⟹ 本函数据此做两项工程处理（均为**实现约定**，须在论文中说明）：
-       ① **最小支持度过滤**：pair_counts < min_support 的谓词不参与判定；
-       ② **自适应阈值**：阈值以「有支持谓词的亲和度分位」为基准，而非固定的 0.5。
+    ⟹ The data in this letter undergoes two engineering processes (both are **implementation conventions** and must be explained in the paper):
+       ① **Minimum support filter**: Predicates with pair_counts < min_support do not participate in the determination;
+       ② **Adaptive threshold**: The threshold is based on the ”affinity quantile with supported predicates” instead of a fixed 0.5.
 
-    ⟹ 更根本的替代方案（与终稿式16 的原式一致）：ρ̂ 本应由**模型预测**的
-       TopK 命中率统计（CVPRW2022 做法），而非标注共现。标注共现仅在上表
-       稀疏性被显式处理后才可用 —— 该点建议写入论文的「分组方法」小节。
+    ⟹ A more fundamental alternative (consistent with the original version of the final equation 16): ρ̂ should have been predicted by the **model**
+       TopK hit rate statistics (CVPRW2022 practice) instead of annotating co-occurrences. Annotations co-occur only in the above table
+       It is only available after sparsity has been explicitly handled - this point is recommended to be written in the ”Grouping Method” section of the paper.
 
-    返回 (mask_non_sym, mask_sym, mask_ambig, w, meta)。
+    Return (mask_non_sym, mask_sym, mask_ambig, w, meta).
     """
     K = counts.shape[0]
     rho = counts / pair_counts.clamp(min=1.0).unsqueeze(0)
     aff = torch.maximum(rho, rho.t())
     support = pair_counts >= min_support
 
-    # 自适应阈值：以有支持谓词的（对角 / 非对角）亲和度分位为基准
+    # Adaptive threshold: based on the (diagonal/non-diagonal) affinity quantile with supporting predicates
     diag = torch.diagonal(aff).clone()
     off = aff.clone()
     off.fill_diagonal_(0.0)

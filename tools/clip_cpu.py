@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CPU 版 CLIP ViT-B/32 视觉塔（从既有 OpenAI JIT 存档离线重建）。
+"""CPU version of CLIP ViT-B/32 vision tower (offline rebuild from existing OpenAI JIT archive).
 
-背景（必须写进实验报告）：
-  本机 `data/clip/ViT-B-32.pt` 是用 **CUDA 追踪**导出的 TorchScript 存档，
-  其计算图内硬编码了 `device=torch.device("cuda:0")`，在本机（torch 2.14.1+cpu，
-  无 CUDA）上 `torch.jit.load(...).visual(x)` 直接抛错，**无法在 CPU 运行**。
+Background (must be included in the lab report):
+  The native `data/clip/ViT-B-32.pt` is a TorchScript archive exported using **CUDA Trace**.
+  `device=torch.device(”cuda:0”)` is hard-coded in its calculation graph. On this machine (torch 2.14.1+cpu,
+  Without CUDA), `torch.jit.load(...).visual(x)` directly throws an error and **cannot run on the CPU**.
 
-  但该存档的 `state_dict()` 可在 CPU 上正常提取（305 个键，视觉塔权重大量为
-  fp16）。故此处用标准 ViT-B/32 结构**离线重建**视觉塔并注入原权重，
-  从而在 CPU 上得到与官方 CLIP 一致的图像编码器。
+  But the archive’s `state_dict()` fetches fine on CPU (305 keys, visual tower weight massive
+  fp16). Therefore, the standard ViT-B/32 structure is used to **offline reconstruct** the visual tower and inject the original weights.
+  This results in an image encoder consistent with the official CLIP on the CPU.
 
-仅重建**视觉塔**（encode_image）。开放 CLIP 的文本塔还需 BPE 词表
-（bpe_simple_vocab_16e6.txt.gz，本机缺失），故本脚本不提供文本编码；
-x_t 与蒸馏目标 q 改用可学习嵌入 / 谓词频率先验（实验报告中标注为替代方案）。
+Rebuild only the visual tower (encode_image). Opening CLIP’s text tower also requires a BPE vocabulary
+(bpe_simple_vocab_16e6.txt.gz, missing in this machine), so this script does not provide text encoding;
+x_t with distillation target q using a learnable embedding/predicate frequency prior instead (marked as an alternative in the lab report).
 
-用法：
+Usage:
   from clip_cpu import CLIPVisionCPU
   enc = CLIPVisionCPU(weights_path)
-  feat = enc.encode_pils([pil1, pil2, ...])   # (N, 512) L2 归一化前的原始输出
+  feat = enc.encode_pils([pil1, pil2, ...]) # (N, 512) L2 original output before normalization
 """
 from __future__ import annotations
 
@@ -29,14 +29,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# CLIP 官方图像归一化常数
+# CLIP official image normalization constant
 CLIP_MEAN = (0.48145466, 0.4578275, 0.40821073)
 CLIP_STD = (0.26862954, 0.26130258, 0.27577711)
 CLIP_RES = 224
 
 
 class QuickGELU(nn.Module):
-    """OpenAI CLIP 使用的 QuickGELU（非 nn.GELU）。"""
+    """QuickGELU (not nn.GELU) used by OpenAI CLIP."""
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x * torch.sigmoid(1.702 * x)
@@ -45,10 +45,10 @@ class QuickGELU(nn.Module):
 class ResidualAttentionBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int):
         super().__init__()
-        # nn.MultiheadAttention 的状态字键名与 CLIP 一致：attn.in_proj_weight 等
+        # The status word key name of nn.MultiheadAttention is consistent with CLIP: attn.in_proj_weight, etc.
         self.attn = nn.MultiheadAttention(d_model, n_head)
         self.ln_1 = nn.LayerNorm(d_model)
-        # 键名须与 CLIP 一致：mlp.c_fc / mlp.c_proj
+        # The key name must be consistent with CLIP: mlp.c_fc / mlp.c_proj
         from collections import OrderedDict
         self.mlp = nn.Sequential(OrderedDict([
             ("c_fc", nn.Linear(d_model, d_model * 4)),
@@ -58,7 +58,7 @@ class ResidualAttentionBlock(nn.Module):
         self.ln_2 = nn.LayerNorm(d_model)
 
     def attention(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (L, N, E)，batch_first=False
+        # x: (L, N, E), batch_first=False
         return self.attn(x, x, x, need_weights=False)[0]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -68,7 +68,7 @@ class ResidualAttentionBlock(nn.Module):
 
 
 class _Transformer(nn.Module):
-    """容器：使状态字键名呈 transformer.resblocks.{i}.*"""
+    """Container: Make the status key name transformer.resblocks.{i}.*"""
 
     def __init__(self, width: int, layers: int, heads: int):
         super().__init__()
@@ -114,12 +114,12 @@ class VisionTransformer(nn.Module):
 
 
 class CLIPVisionCPU:
-    """从 OpenAI JIT 存档提取权重、重建的 CLIP ViT-B/32 视觉塔。
+    """Extracting weights from OpenAI JIT archive, reconstructed CLIP ViT-B/32 vision tower.
 
-    ⚠️ 类名保留 `CPU` 是为兼容既有调用（`tools/small_sample_experiment.py` 等），
-    但**现已支持 GPU**：`CLIPVisionCPU(weights_path, device="cuda")` 即可。
-    迁移原因：本机 RTX 3060 可用，而 CLIP 图像编码是全流程最重的一步
-    （57,723+26,446 图的裁剪编码需数小时），GPU 上可快一个量级。
+    ⚠️ The class name `CPU` is reserved for compatibility with existing calls (`tools/small_sample_experiment.py`, etc.),
+    But **now supports GPU**: `CLIPVisionCPU(weights_path, device=”cuda”)` will do.
+    Reason for migration: Native RTX 3060 is available, and CLIP image encoding is the most important step in the process
+    (Crop encoding of 57,723+26,446 images takes hours) and is an order of magnitude faster on the GPU.
     """
 
     def __init__(self, weights_path: str, verbose: bool = False,
@@ -134,18 +134,18 @@ class CLIPVisionCPU:
                for k, v in sd.items() if k.startswith("visual.")}
         missing, unexpected = self.visual.load_state_dict(sub, strict=False)
         if verbose:
-            print(f"[clip_cpu] 注入视觉塔权重 {len(sub)} 项；"
+            print(f"[clip_cpu] Inject visual tower weights {len(sub)} item;"
                   f"missing={missing} unexpected={unexpected}")
         if missing:
-            raise RuntimeError(f"CLIP 视觉塔权重缺失: {missing}")
+            raise RuntimeError(f"CLIP Visual tower weight missing: {missing}")
 
-        # 设备选择：显式 > CUDA 可用 > CPU
+        # Device selection: Explicit > CUDA available > CPU
         if device is not None:
             self.device = torch.device(device)
         else:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.visual.to(self.device)
-        # fp16 在 GPU 上显著更快且显存减半；CPU 上 fp16 支持差，保持 fp32
+        # fp16 is significantly faster on GPU and has half the memory; fp16 support is poor on CPU, keep fp32
         self.dtype = torch.float16 if self.device.type == "cuda" else torch.float32
         self.visual.to(self.dtype)
         self.visual.eval()
@@ -158,16 +158,16 @@ class CLIPVisionCPU:
 
     @torch.no_grad()
     def encode_tensor(self, x: torch.Tensor) -> torch.Tensor:
-        """x: (N,3,224,224) 已归一化 → (N,512)。"""
+        """x: (N,3,224,224) normalized → (N,512)."""
         x = x.to(device=self.device, dtype=self.dtype, non_blocking=True)
         return self.visual(x).float()
 
     @torch.no_grad()
     def encode_pils(self, pils: Sequence, batch_size: int = 64) -> torch.Tensor:
-        """pil list（RGB）→ (N,512) **CPU float32**，内部 resize 224 / 归一化。
+        """pil list (RGB) → (N,512) **CPU float32**, internal resize 224 / normalized.
 
-        ⚠️ PIL 解码与 resize 仍在 CPU（不可避免），但 ViT 前向在 GPU。
-        返回值统一回 CPU，以便与既有缓存格式（CPU 张量）兼容。
+        ⚠️ PIL decoding and resize are still on the CPU (inevitable), but ViT forward is on the GPU.
+        Return values ​​are unified back to the CPU for compatibility with existing cache formats (CPU tensors).
         """
         import numpy as np
 

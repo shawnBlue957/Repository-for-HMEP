@@ -1,18 +1,18 @@
-"""三角路径（隐式流）一致性诊断：它到底有没有 pair 判别力？
+"""Triangular path (implicit flow) consistency diagnosis: does it have pair discriminability?
 
-检验目标（决定要不要做「用隐式流验证显式流」这条路）：
-    对每个候选物体对 (A,C)，用两条一阶关系复合出 A→C 的谓词分布
+Test goal (deciding whether to do the ”use implicit flow to verify explicit flow” path):
+    For each candidate object pair (A,C), use two first-order relations to compose the predicate distribution of A→C
         u_AC = Σ_B  s_BC · (p_AB @ P_conv)
-    再算它与显式预测 p_AC 的一致性
+    Then calculate its consistency with the explicit prediction p_AC
         c_AC = 1 − JS(p_AC ‖ rownorm(u_AC))
-    若 c_AC 能把「真关系对」与「顺手采样的非关系对」分开（AUC 显著 > 0.5），
-    则把 c 作为 pair 级校准项（加到 logits 上）才有意义。
+    If c_AC can separate ”true relational pairs” from ”conveniently sampled non-relational pairs” (AUC is significant > 0.5),
+    Then it makes sense to treat c as a pair-level calibration term (added to logits).
 
-同时给出两个基准：
-    z_conf = max_k log p_AC      现有 pair 置信度
-    AUC(z+c)                     两者 rank 平均后的融合 AUC
+Two benchmarks are given at the same time:
+    z_conf = max_k log p_AC existing pair confidence
+    AUC(z+c) The fused AUC after the average of the two ranks
 
-用法（在 small_sample_experiment.py 里由 --diag-path-auc 触发）：
+Usage (triggered by --diag-path-auc in small_sample_experiment.py):
     path_auc_diag(model, obj_emb, te, hp, log=log)
 """
 from __future__ import annotations
@@ -25,16 +25,16 @@ import torch
 from .closure import rownorm
 
 
-# ---------------------------------------------------------------- 工具
+#----------------------------------------------------------------Tools
 def _auc(y: np.ndarray, s: np.ndarray) -> float:
-    """Mann-Whitney U 的 AUC（并列取平均秩）。"""
+    """AUC of Mann-Whitney U (average ranks tied)."""
     n1, n0 = int(y.sum()), int((1 - y).sum())
     if n1 == 0 or n0 == 0:
         return float("nan")
     order = np.argsort(s, kind="mergesort")
     ranks = np.empty(len(s), dtype=np.float64)
     ranks[order] = np.arange(1, len(s) + 1, dtype=np.float64)
-    # 并列修正：同分值取平均秩
+    # Parallel correction: average rank for the same score
     _, inv, cnt = np.unique(s, return_inverse=True, return_counts=True)
     if (cnt > 1).any():
         sums = np.zeros(len(cnt))
@@ -44,7 +44,7 @@ def _auc(y: np.ndarray, s: np.ndarray) -> float:
 
 
 def _js(p: np.ndarray, q: np.ndarray, eps: float = 1e-8) -> np.ndarray:
-    """逐行 JS 散度（自然对数，取值 [0, ln2]）。"""
+    """Row-wise JS divergence (natural logarithm, values ​​[0, ln2])."""
     p = np.clip(p, eps, None); q = np.clip(q, eps, None)
     m = 0.5 * (p + q)
     kl = lambda a, b: (a * (np.log(a) - np.log(b))).sum(-1)   # noqa: E731
@@ -52,7 +52,7 @@ def _js(p: np.ndarray, q: np.ndarray, eps: float = 1e-8) -> np.ndarray:
 
 
 def _mod_dev(m) -> torch.device:
-    """模块所在设备。`FrozenObjText` 全参数冻结，`parameters()` 可能为空 ⟹ 退化到 buffer。"""
+    """The device where the module is located. `FrozenObjText` freezes all parameters, `parameters()` may be empty ⟹ Degenerate to buffer."""
     for t in list(m.parameters()) + list(m.buffers()):
         return t.device
     return torch.device("cpu")
@@ -77,16 +77,16 @@ def _scores(model, obj_emb, data, i: int, dev):
     return p_ij[0], pairs
 
 
-# ---------------------------------------------------------------- 主诊断
+# --------------------------------------------------------------------- Main Diagnosis
 @torch.no_grad()
 def path_auc_diag(model, obj_emb, data, hp, log=print,
                   max_img: int = 0, eta: float = 1.0) -> dict:
-    """在给定 split 上统计 c_AC 的 pair 判别力（AUC）。"""
+    """Count the pair discriminative power (AUC) of c_AC on a given split."""
     model.eval()
     dev = next(model.parameters()).device
     K = hp.K
-    p_conv = model.closure()[1][:, :K]              # (K,K+1) → 去掉 φ 列得 (K,K)
-    Pc = rownorm(p_conv)                            # p_conv 已 softmax，截列后行和<1，需再归一
+    p_conv = model.closure()[1][:, :K]              # (K,K+1) → Remove φ and get (K,K)
+    Pc = rownorm(p_conv)                            # p_conv has been softmaxed. After column truncation, the row sum is <1 and needs to be normalized again.
     Pc_np = Pc.detach().cpu().numpy()
 
     Z, C, Y = [], [], []
@@ -102,14 +102,14 @@ def path_auc_diag(model, obj_emb, data, hp, log=print,
         sc, pairs = _scores(model, obj_emb, data, i, dev)
         if sc is None:
             continue
-        # logits → 概率（pair 内归一，仅用于路径聚合与一致性）
+        # logits → probability (normalized within pair, only used for path aggregation and consistency)
         p = torch.softmax(sc.float(), dim=-1)                    # (P,K)
-        # ⚠️ pair 置信度必须取 **logits 域**的 max：log-softmax 是 per-pair 常数平移，
-        #    若先 softmax 再取 max，`z += β·log σ(rel)` 这类 pair 级校准会被完全抵消，
-        #    AUC 就测不出任何变化（曾因此误判 pair_rel 无效）。
-        s_conf = sc.float().max(-1).values                       # (P,) logits 域 pair 置信度
+        # ⚠️ The pair confidence must be the max of the **logits domain**: log-softmax is a per-pair constant translation,
+        # If softmax is taken first and then max, pair-level calibration such as `z += β·log σ(rel)` will be completely offset.
+        # AUC cannot detect any changes (because of this, pair_rel was misjudged to be invalid).
+        s_conf = sc.float().max(-1).values                       # (P,) logits domain pair confidence
 
-        # 稠密化：P3[a,b,:]=p, S2[b,c]=s_conf
+        # Densification: P3[a,b,:]=p, S2[b,c]=s_conf
         P3 = np.zeros((n, n, K), dtype=np.float32)
         S2 = np.zeros((n, n), dtype=np.float32)
         pos = {}
@@ -118,8 +118,8 @@ def path_auc_diag(model, obj_emb, data, hp, log=print,
             S2[a, b] = float(s_conf[j])
             pos[(a, b)] = j
 
-        Q3 = P3 @ Pc_np                                          # (n,n,K) 谓词复合
-        U = np.einsum("abl,bc->acl", Q3, S2)                     # (n,n,K) 路径聚合
+        Q3 = P3 @ Pc_np                                          # (n,n,K) predicate compound
+        U = np.einsum("abl,bc->acl", Q3, S2)                     # (n,n,K) path aggregation
         npair = len(pairs)
         a_arr = np.array([a for a, _ in pairs])
         b_arr = np.array([b for _, b in pairs])
@@ -130,9 +130,9 @@ def path_auc_diag(model, obj_emb, data, hp, log=print,
             u_rows[j] = row / tot if tot > 1e-8 else np.full(K, 1.0 / K, dtype=np.float32)
         n_path += npair
 
-        p_rows = P3[a_arr, b_arr]                                # (P,K) 显式预测
+        p_rows = P3[a_arr, b_arr]                                # (P,K) explicit prediction
         js = _js(p_rows, u_rows)                                 # (P,)
-        c_conf = 1.0 - js / np.log(2.0)                          # 映射到 [0,1]
+        c_conf = 1.0 - js / np.log(2.0)                          # Map to [0,1]
 
         is_gt = np.zeros(npair, dtype=np.int64)
         for (a, b, _pred) in gt:
@@ -144,11 +144,11 @@ def path_auc_diag(model, obj_emb, data, hp, log=print,
         Y.append(is_gt)
 
     if not Z:
-        log("  [path-auc] 无有效数据")
+        log("  [path-auc] No valid data")
         return {}
     z = np.concatenate(Z); c = np.concatenate(C); y = np.concatenate(Y)
     a_z, a_c = _auc(y, z), _auc(y, c)
-    # rank 平均融合
+    # rank average fusion
     def _rank(v):
         o = np.argsort(np.argsort(v))
         return o / max(len(v) - 1, 1)
@@ -157,9 +157,9 @@ def path_auc_diag(model, obj_emb, data, hp, log=print,
            "auc_z": a_z, "auc_c": a_c, "auc_fusion": a_f,
            "c_pos_mean": float(c[y == 1].mean()), "c_neg_mean": float(c[y == 0].mean()),
            "z_pos_mean": float(z[y == 1].mean()), "z_neg_mean": float(z[y == 0].mean())}
-    log("  [path-auc] 候选对 %d（正 %d / 负 %d）" % (res["n_pair"], res["n_pos"], res["n_pair"] - res["n_pos"]))
-    log("  [path-auc] AUC(z_conf)=%.4f | AUC(一致性 c)=%.4f | AUC(z⊕c 秩融合)=%.4f"
+    log("  [path-auc] candidate pair %d (Right %d / Negative %d)" % (res["n_pair"], res["n_pos"], res["n_pair"] - res["n_pos"]))
+    log("  [path-auc] AUC(z_conf)=%.4f | AUC(Consistency c)=%.4f | AUC(z⊕c rank fusion)=%.4f"
         % (a_z, a_c, a_f))
-    log("  [path-auc] 一致性均值：正样本 %.4f / 负样本 %.4f（差 %+.4f）"
+    log("  [path-auc] Consistency mean: positive samples %.4f / negative sample %.4f (Poor %+.4f)"
         % (res["c_pos_mean"], res["c_neg_mean"], res["c_pos_mean"] - res["c_neg_mean"]))
     return res
