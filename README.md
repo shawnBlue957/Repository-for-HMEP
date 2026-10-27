@@ -1,20 +1,44 @@
-# Visual Relationship Prediction with Relational Category Modeling (VRP-Cat)
+# Hierarchical embedding-based approach for accurate visual relationship prediction
 
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.22231950-blue.svg)](https://doi.org/10.5281/zenodo.22231950)
 
-A reference implementation for visual relationship prediction under the PredCls protocol. The core premise is that **hom-sets in a relational category may be empty ($\varnothing$)**. Mainstream implementations instead constrain predictions to a probability simplex over $K$ nonempty predicate classes, making it structurally impossible to express that two objects have no relationship. This repository introduces $\varnothing$ and replaces within-pair normalization with unnormalized intensities.
+Implementation and experiment tools for **HMEP (Hierarchical Multimodal Embedding for Prediction)**, corresponding to the manuscript *Hierarchical embedding-based approach for accurate visual relationship prediction* by **Yunhao Sun, Xiaoao Chen, Heng Chen, and Ruihua Qi**.
 
-## Main Results (PredCls, Logit Scoring, Mean ± Standard Deviation over 3 Seeds)
+The framework combines multimodal feature fusion, dynamically weighted relationship prediction, and consistency and reversibility regularization. A **pair-existence module (PEM)** learns which ordered object pairs carry an annotated relation and calibrates their scores for image-level ranking. The main improvement is in ranking pairs; it does not establish uniformly better predicate classification within a known pair.
 
-| Dataset / Evaluation Setting | $R@50$ | $R@100$ | $mR@50$ | $top1$ |
-|---|---|---|---|---|
-| Full VG-150 | **0.6401 ± 0.0006** | 0.7687 ± 0.0003 | 0.2411 ± 0.0005 | 0.6765 ± 0.0003 |
-| GQA Discriminative View ($\beta{=}0.5$) | **0.4793 ± 0.0019** | 0.5851 ± 0.0023 | 0.2080 ± 0.0009 | 0.6068 ± 0.0005 |
-| GQA Full Evaluation ($\beta{=}1$) | **0.5977 ± 0.0001** | 0.8070 ± 0.0000 | 0.1162 ± 0.0018 | 0.9525 ± 0.0000 |
+The source package retains the implementation names `vrp-cat`, `VRPCatModel`, and `PairResidualHead`. These names identify the current code layout. The paper-facing model name used below is **HMEP + PEM**.
 
-Baseline comparisons use the same frozen features and evaluation function. The strongest VG baseline, MLP, achieves $R@50=0.5433$ (+17.8% relative improvement for our method); the previous best result on the GQA discriminative view is 0.4597 (+4.3%).
+## Main Results
 
-**Mechanism verification**: Sweeping $\beta$ from 0 to 100 leaves $top1$ bitwise unchanged (0.6751 on VG and 0.9338–0.9341 on GQA). This indicates that $\varnothing$ calibration changes rankings across pairs while preserving the within-pair $\arg\max$.
+Results below follow Tables 3-5 of the supplied manuscript. All values are **percentages**; ± denotes the standard deviation over three runs for the full model.
+
+| Dataset / Evaluation Setting | R@20 | R@50 | R@100 | mR@50 | top1 | BRC@1 |
+|---|---|---|---|---|---|---|
+| VG-150, HMEP + PEM | 43.77 ± 0.05 | **64.01 ± 0.06** | 76.87 ± 0.03 | 24.11 ± 0.05 | 67.65 ± 0.03 | 42.47 ± 0.23 |
+| GQA discriminative view, HMEP + PEM ($\gamma=0.5$) | — | **47.93 ± 0.19** | 58.51 ± 0.23 | 20.80 ± 0.09 | 60.68 ± 0.05 | 31.16 ± 0.29 |
+| GQA full view, HMEP + PEM ($\gamma=1$) | — | **59.77 ± 0.01** | 80.70 ± 0.00 | 11.62 ± 0.18 | 95.25 ± 0.00 | — |
+
+- **VG-150:** The strongest re-implemented baseline, MLP, achieves R@50 = 54.33%, versus 64.01% for HMEP + PEM (+17.8% relative). Its top1 (68.77%) and BRC@1 (43.00%) remain slightly higher than those of HMEP + PEM. The relation modules contain 1.34M and 8.39M parameters, respectively; PEM accounts for 1.38M of the latter.
+- **GQA discriminative view:** HMEP + PEM reaches R@50 = 47.93%, versus 42.87% for MLP. The earlier softmax-scored OURS-F result is 45.97%; its mR@50 of 15.93% increases to 20.80% (+30.6% relative). These are different reference comparisons.
+- **GQA full view:** R@50 is 59.77%, versus 48.67% for VCTree (+22.8% relative). The manuscript treats this view as supplementary because its two spatial predicates can be recovered from box coordinates.
+
+### Evaluation Protocol
+
+The task is **predicate classification (PredCls)** with ground-truth object boxes and class labels. Candidate ordered object pairs and predicate labels are ranked **globally within each image**. Results under this protocol should not be compared directly with per-pair or per-subject ranking results.
+
+R@K is reported at K = 20, 50, and 100. mR@50 averages recall across predicate classes; top1 measures predicate accuracy within annotated pairs; BRC@1 requires correct predictions in both directions for pairs annotated in both directions. Baselines use the same cached, frozen region features. They are re-implementations under this shared protocol, rather than their original published benchmark scores.
+
+### Pair Existence and Calibration
+
+PEM uses binary cross-entropy supervision with three sampled non-ground-truth ordered pairs per positive pair from the same image. The manuscript writes inference calibration as:
+
+$$
+\widetilde z_k(i,j)=z_k(i,j)+\gamma s(i,j).
+$$
+
+The same scalar offset is applied to every predicate of a pair, preserving within-pair ordering while changing the ranking across pairs. The manuscript reports that 93.46% of two-hop-connected pairs in VG-150 and 62.11% in GQA have no annotated relation. These are annotation statistics, not proof that the corresponding objects have no real-world relationship.
+
+**Implementation correspondence:** The current code exposes calibration through `--pair-rel-beta` and computes `z[k] += beta * log_sigmoid(rel_logit)` in `vrp/model.py`. The manuscript uses $\gamma$ for calibration strength and $\alpha,\beta$ for dynamic weights. The code's CLI name is retained, and its log-sigmoid transform should be distinguished from the raw-score expression in the manuscript.
 
 ## Directory Structure
 
@@ -24,14 +48,14 @@ vrp/                     Core library
   data.py / gqa_data.py  Dataset assembly
   backbone.py            Chain_3 encoding + dual streams (r_exp / r_imp) + gated fusion + DualHead
   closure.py             Composition table P_conv, transitive closure, mixed student distribution
-  enrich.py              Low-rank enrichment metric (Eq. 14)
+  enrich.py              Low-rank enrichment metric (implementation module)
   losses.py              Constraints: cls / inv / dag / sym / coh / ord / PI, etc.
   model.py               VRPCatModel, PairResidualHead (per-pair bypass + ∅ prediction)
   rerank.py              Stage-2 within-pair reranking (optional module)
   pathdiag.py            Discriminative power of triangular path consistency (AUC)
 tools/
   small_sample_experiment.py   Main experiment entry point (training + evaluation + ablations + β sweep)
-  sota_baselines.py            MLP / GPS-Net / VCTree / SGTR / Transformer / LoGAN
+  sota_baselines.py            MLP / GPS-Net / VCTree / SGTR / Transformer / LOGIN
   roi_features.py              ROI feature pre-extraction (ResNeXt-101 + FPN)
   clip_cpu.py / clip_text_cpu.py   CLIP weight conversion and text tower
   build_inv_pairs_from_data.py Inverse-predicate table derived from annotations
@@ -60,10 +84,14 @@ pip install -r requirements.txt
   - **DOI**: 10.5281/zenodo.4004776
   - **URL**: https://homes.cs.washington.edu/~ranjay/visualgenome/api.html
 
-- **Additional Dataset**: VRD (Visual Relationship Detection) dataset.
+- **Second evaluation dataset: GQA** (Hudson and Manning, 2019), using 72,581 training and 10,297 evaluation items. Its scene graphs derive from Visual Genome scenes, so the two benchmarks are not independent image domains. The primary discriminative view removes `to the left of` and `to the right of` from both ground truth and candidates, leaving 56,027 ground-truth triplets. The full view retains both predicates.
+  - **Annotation preparation**: See `tools/prepare_gqa.py` and [Data Preparation](#data-preparation).
+  - **Citation**: Hudson, D. A., and Manning, C. D. (2019). *GQA: A New Dataset for Real-World Visual Reasoning and Compositional Question Answering*.
+
+- **Legacy dataset resource: VRD** (Visual Relationship Detection). The original repository's links and citation are retained below; the supplied manuscript reports its main experiments on VG-150 and GQA.
   - **Introduction**: The VRD dataset is used for visual relation detection/prediction tasks. It provides triplet annotations of subject, predicate, and object in images and is one of the classic benchmark datasets in this field.
-  - **Citation**:Lu, C., Krishna, R., Bernstein, M., & Fei-Fei, L. (2016). *Visual Relationship Detection with Language Priors*. In *ECCV 2016*.
-  - **URL**:https://cs.stanford.edu/people/ranjaykrishna/vrd/
+  - **Citation**: Lu, C., Krishna, R., Bernstein, M., & Fei-Fei, L. (2016). *Visual Relationship Detection with Language Priors*. In *ECCV 2016*.
+  - **URL**: https://cs.stanford.edu/people/ranjaykrishna/vrd/
 
 - **Other Data Sources**: See respective sections or code comments for details.
 
@@ -79,7 +107,8 @@ For the directory layout and preprocessing required by the current implementatio
 
 ### Dataset Specifications (Visual Genome)
 - 108,077 images with annotated objects and relationships
-- 150 object categories and 50 relationship types used in experiments
+- VG-150 evaluation uses 150 object categories and 50 predicates
+- 57,723 training images and 26,446 test images
 - Average of 21 objects and 18 relationships per image
 
 ## Data Preparation
@@ -100,6 +129,8 @@ python tools/_paths.py                    # Print resolved paths and check them 
 ```
 
 ## Reproduction
+
+The commands below retain the existing implementation examples, including `--batch-size 32`. The manuscript reports 30 epochs on NVIDIA RTX 4080 GPUs, Adam with an initial learning rate of $10^{-4}$ reduced to $10^{-6}$ by a cosine schedule, and a batch size of **128**. Set `--batch-size 128 --lr 1e-4` when matching those reported settings, and verify the scheduler and remaining configuration in the training code. The examples are not a claim that every manuscript setting has been reconciled with this code revision.
 
 **Full VG-150 (3 seeds)**
 
@@ -154,7 +185,7 @@ python tools/sota_baselines.py --dataset vg150 --train-n 57723 --test-n 26446 \
 ## Diagnostic Scripts
 
 ```bash
-# Empirical fraction of empty three-hop relations given valid two-hop relations (measured κ in the paper)
+# Measure unannotated relations among pairs connected by two-hop paths
 python tools/count_twohop_empty.py
 
 # Pair discrimination AUC (check whether ∅ prediction learns a signal)
@@ -163,9 +194,11 @@ python tools/small_sample_experiment.py ... --diag-path-auc
 
 ## Citation
 
-The original repository identifies the associated work as *Hierarchical Embedding-Based Visual Relationship Prediction Method with Multimodal Fusion*, by Yunhao Sun, Xiaoao Chen, Heng Chen, and Ruihua Qi. Its original citation labels it as a 2024 preprint.
+The supplied manuscript is **Hierarchical embedding-based approach for accurate visual relationship prediction**, by **Yunhao Sun, Xiaoao Chen, Heng Chen, and Ruihua Qi**. The authors are affiliated with the School of Software and the Research Center for Language Intelligence at Dalian University of Foreign Languages. Heng Chen and Ruihua Qi are the corresponding authors.
 
-The repository/archive DOI recorded in the original README and citation metadata is [10.5281/zenodo.22231950](https://doi.org/10.5281/zenodo.22231950). The original `CITATION.cff` also records version `1.0.1` and the URL [10.5281/zenodo.22147896](https://doi.org/10.5281/zenodo.22147896). Both identifiers are retained as originally provided; they should not be interpreted as a newly verified journal-article DOI or a release identifier for the current code.
+The supplied PDF does not specify an article DOI, journal, or publication year. The manuscript citation below therefore does not assign these fields. The original repository used the earlier title *Hierarchical Embedding-Based Visual Relationship Prediction Method with Multimodal Fusion* and labeled it as a 2024 preprint; that historical metadata is distinct from the title of the supplied manuscript.
+
+The original repository/archive DOI is [10.5281/zenodo.22231950](https://doi.org/10.5281/zenodo.22231950). The retained `CITATION.cff` also records version `1.0.1` and the URL [10.5281/zenodo.22147896](https://doi.org/10.5281/zenodo.22147896). These original archive identifiers are preserved separately from the manuscript citation and the Visual Genome dataset DOI [10.5281/zenodo.4004776](https://doi.org/10.5281/zenodo.4004776).
 
 If you use this repository or the associated datasets in your research, please cite:
 
@@ -186,11 +219,17 @@ If you use this repository or the associated datasets in your research, please c
   year      = {2016}
 }
 
-@article{hmep2024,
-  title   = {Hierarchical Embedding-Based Visual Relationship Prediction Method with Multimodal Fusion},
-  author  = {Sun, Yunhao and Chen, Xiaoao and Chen, Heng and Qi, Ruihua},
-  journal = {Preprint},
-  year    = {2024}
+@unpublished{hmep,
+  title  = {Hierarchical embedding-based approach for accurate visual relationship prediction},
+  author = {Sun, Yunhao and Chen, Xiaoao and Chen, Heng and Qi, Ruihua},
+  note   = {Manuscript supplied by the authors}
+}
+
+@inproceedings{hudson2019gqa,
+  title     = {GQA: A New Dataset for Real-World Visual Reasoning and Compositional Question Answering},
+  author    = {Hudson, Drew A. and Manning, Christopher D.},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  year      = {2019}
 }
 ```
 
